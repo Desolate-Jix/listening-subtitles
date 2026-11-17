@@ -17,13 +17,15 @@ internal static class Program
         using var mutex = new Mutex(true, "Local\\ListeningSubtitles-" + WindowsIdentity.GetCurrent().User?.Value + (preview ? "-preview" : ""), out var first);
         if (!first)
         {
-            if (!preview) MessageBox.Show("听力字幕已经在运行。请先在现有窗口保留或导出记录，再退出旧窗口并打开此版本。", "已保留正在运行的字幕窗口");
+            if (!preview) MessageBox.Show("听力字幕已经在运行。请先保留或导出记录，再退出旧窗口并打开此版本。\n\nListening Subtitles is already running. Save or export your records before closing the existing window and opening this version.", "听力字幕 / Listening Subtitles");
             return;
         }
         try
         {
             var store = new ListeningSettingsStore(preview ? Path.GetFullPath(args[1]) : null);
-            using var form = new SubtitleForm(store, store.Load());
+            var settings = store.Load();
+            AppText.Language = settings.InterfaceLanguage;
+            using var form = new SubtitleForm(store, settings);
             if (preview)
             {
                 form.Shown += (_, _) =>
@@ -43,7 +45,7 @@ internal static class Program
         catch (Exception ex)
         {
             if (preview) { Directory.CreateDirectory(args[1]); File.WriteAllText(Path.Combine(args[1], "preview-error.txt"), ex.ToString()); Environment.ExitCode = 1; }
-            else MessageBox.Show(ex.Message, "听力字幕无法启动");
+            else MessageBox.Show(ex.Message, AppText.T("听力字幕无法启动", "Listening Subtitles could not start"));
         }
     }
 }

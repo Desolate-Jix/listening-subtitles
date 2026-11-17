@@ -1,6 +1,8 @@
+using System.Text;
+
 namespace ListeningSubtitles.Core;
 
-public sealed record TranscriptTranslationUpdate(string Id, string OriginalText, string Translation, string Status);
+public sealed record TranscriptTranslationUpdate(string Id, string OriginalText, string Translation, string Status, string TargetLanguage = "zh-Hans");
 
 /// <summary>
 /// Only an explicit enqueue can request a translation. Retains at most eight pending items
@@ -12,6 +14,7 @@ public sealed class TranscriptTranslationQueue : IAsyncDisposable
     public const int Capacity = 8;
     private readonly Func<string, CancellationToken, Task<string>> _translate;
     private readonly Action<TranscriptTranslationUpdate> _callback;
+    private readonly string _targetLanguage;
     private readonly object _gate = new();
     private readonly Queue<Item> _pending = new();
     private readonly HashSet<string> _inProgress = new(StringComparer.Ordinal);
@@ -21,24 +24,19 @@ public sealed class TranscriptTranslationQueue : IAsyncDisposable
     private Task? _stopTask;
     private bool _stopped, _disposed;
 
-    public TranscriptTranslationQueue(Func<string, CancellationToken, Task<string>> translate, Action<TranscriptTranslationUpdate> callback)
+    public TranscriptTranslationQueue(Func<string, CancellationToken, Task<string>> translate, Action<TranscriptTranslationUpdate> callback,
+        string targetLanguage = "zh-Hans")
     {
         _translate = translate ?? throw new ArgumentNullException(nameof(translate));
         _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+        _targetLanguage = TranslationLanguages.Find(targetLanguage)?.Code ?? throw new ArgumentException(AppText.T("请选择支持的翻译目标语言。", "Choose a supported translation language."));
         _worker = Task.Run(WorkAsync);
     }
 
     public static bool NeedsTranslation(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return false;
-        var ascii = 0;
-        var cjk = 0;
-        foreach (var c in text)
-        {
-            if (c is >= 'A' and <= 'Z' or >= 'a' and <= 'z') ascii++;
-            else if (c is >= '\u3400' and <= '\u9fff' or >= '\uf900' and <= '\ufaff') cjk++;
-        }
-        return ascii >= 3 && ascii >= (long)cjk * 2;
+        return text.EnumerateRunes().Any(System.Text.Rune.IsLetterOrDigit);
     }
 
     public bool TryEnqueue(string id, string text)
@@ -48,7 +46,7 @@ public sealed class TranscriptTranslationQueue : IAsyncDisposable
         lock (_gate)
         {
             if (_stopped || _pending.Count >= Capacity || !_inProgress.Add(id)) return false;
-            _pending.Enqueue(new(id, text));
+            _pending.Enqueue(new(id, text, _targetLanguage));
             _available.Release();
             return true;
         }
@@ -97,7 +95,7 @@ public sealed class TranscriptTranslationQueue : IAsyncDisposable
 
     private void Notify(Item item, string translation, string status)
     {
-        try { _callback(new(item.Id, item.Text, translation, status)); }
+        try { _callback(new(item.Id, item.Text, translation, status, item.TargetLanguage)); }
         catch (Exception) { /* A UI callback cannot interrupt queue cleanup or another item. */ }
     }
 
@@ -132,5 +130,5 @@ public sealed class TranscriptTranslationQueue : IAsyncDisposable
         }
     }
 
-    private sealed record Item(string Id, string Text);
+    private sealed record Item(string Id, string Text, string TargetLanguage);
 }

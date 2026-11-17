@@ -1,3 +1,4 @@
+using ListeningSubtitles.Core;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -65,13 +66,13 @@ public sealed class RealtimeTranscriber : ListeningSubtitles.Core.ITranscriber
     private RealtimeTranscriber(AudioSourceKind source, string model, string language, IRealtimeTransport? transport,
         TimeProvider? timeProvider, TimeSpan? readinessTimeout, bool createDefaultTransport)
     {
-        if (!Enum.IsDefined(source)) throw new ArgumentException("音频来源无效。", nameof(source));
+        if (!Enum.IsDefined(source)) throw new ArgumentException(AppText.T("音频来源无效。", "Invalid audio source."), nameof(source));
         if (model is not ("gpt-live-transcribe" or "gpt-transcribe"))
-            throw new ArgumentException("实时转写目前支持 gpt-live-transcribe 或 gpt-transcribe。", nameof(model));
+            throw new ArgumentException(AppText.T("实时转写目前支持 gpt-live-transcribe 或 gpt-transcribe。", "Realtime transcription supports gpt-live-transcribe or gpt-transcribe."), nameof(model));
         ArgumentNullException.ThrowIfNull(language);
         _languages = string.IsNullOrWhiteSpace(language) ? [] : language.Split(',').Select(x => x.Trim().ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToArray();
         if (_languages.Length > 8 || _languages.Any(x => !Regex.IsMatch(x, @"\A[a-z]{2,3}(-[a-z0-9]{2,4})?\z", RegexOptions.CultureInvariant)))
-            throw new ArgumentException("转写语言须为逗号分隔的语言代码，例如 zh,en；留空可自动识别。", nameof(language));
+            throw new ArgumentException(AppText.T("转写语言须为逗号分隔的语言代码，例如 zh,en；留空可自动识别。", "Use comma-separated speech language codes, such as zh,en; leave blank for automatic detection."), nameof(language));
         _source = source;
         _model = model;
         _clock = timeProvider ?? TimeProvider.System;
@@ -86,12 +87,12 @@ public sealed class RealtimeTranscriber : ListeningSubtitles.Core.ITranscriber
     public async Task StartAsync(string apiKey, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Length > 8192 || apiKey.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
-            throw new ArgumentException("API 密钥无效，不能包含空格或换行。", nameof(apiKey));
+            throw new ArgumentException(AppText.T("API 密钥无效，不能包含空格或换行。", "Invalid API key: spaces and line breaks are not allowed."), nameof(apiKey));
         CancellationToken token;
         lock (_sync)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_startedOnce || _stopping) throw new InvalidOperationException("此转写实例已使用，请创建新实例后启动。");
+            if (_startedOnce || _stopping) throw new InvalidOperationException(AppText.T("此转写实例已使用，请创建新实例后启动。", "This transcription connection has already been used. Start a new connection."));
             _startedOnce = true;
             _origin = _clock.GetTimestamp();
             _originUtc = _clock.GetUtcNow();
@@ -140,13 +141,13 @@ public sealed class RealtimeTranscriber : ListeningSubtitles.Core.ITranscriber
             if (!stopped && !cancelled && failure is null)
             {
                 failure = startup.IsCancellationRequested
-                    ? "实时转写初始化超时，尚未开始上传音频。请检查网络或模型权限后重新启动。"
-                    : "无法建立 OpenAI 实时转写连接。请检查网络、API 密钥和模型权限后重新启动。";
+                    ? AppText.T("实时转写初始化超时，尚未开始上传音频。请检查网络或模型权限后重新启动。", "Transcription setup timed out before audio upload. Check your connection and model access, then start again.")
+                    : AppText.T("无法建立 OpenAI 实时转写连接。请检查网络、API 密钥和模型权限后重新启动。", "Unable to connect to OpenAI transcription. Check your network, API key and model access, then start again.");
                 ReportFailure(failure);
             }
             await StopAsync().ConfigureAwait(false);
-            if (cancelled || stopped) throw new OperationCanceledException("实时转写启动已取消。", cancellationToken);
-            throw new InvalidOperationException(failure ?? "实时转写启动失败。");
+            if (cancelled || stopped) throw new OperationCanceledException(AppText.T("实时转写启动已取消。", "Transcription startup cancelled."), cancellationToken);
+            throw new InvalidOperationException(failure ?? AppText.T("实时转写启动失败。", "Transcription startup failed."));
         }
     }
 
@@ -157,9 +158,9 @@ public sealed class RealtimeTranscriber : ListeningSubtitles.Core.ITranscriber
         {
             if (!_accepting || _stopping || _lifetime?.IsCancellationRequested != false) return false;
             if (pcm is null || pcm.Length == 0 || pcm.Length % 2 != 0 || pcm.Length > MaximumChunkBytes)
-                error = "音频格式无效：需要 24kHz 单声道 PCM16，每个音频块最长 200 毫秒。转写已停止。";
+                error = AppText.T("音频格式无效：需要 24kHz 单声道 PCM16，每个音频块最长 200 毫秒。转写已停止。", "Transcription stopped: expected 24 kHz mono PCM16 audio, with chunks no longer than 200 ms.");
             else if (_queuedBytes + pcm.Length > MaximumQueuedBytes || _queue.Count >= MaximumQueuedChunks)
-                error = "音频发送积压超过约 3 秒，转写已停止，未重放积压音频。请检查网络后重新启动。";
+                error = AppText.T("音频发送积压超过约 3 秒，转写已停止，未重放积压音频。请检查网络后重新启动。", "Transcription stopped after over 3 seconds of queued audio. Buffered audio was not replayed. Check your network and start again.");
             else
             {
                 _queue.Enqueue(new(pcm.ToArray(), _clock.GetTimestamp(), _audioGeneration));
@@ -246,8 +247,8 @@ public sealed class RealtimeTranscriber : ListeningSubtitles.Core.ITranscriber
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (StaleAudioException) { ReportFailure("音频发送积压超过约 3 秒，转写已停止，未重放过期音频。请检查网络后重新启动。"); }
-        catch (Exception) { if (!token.IsCancellationRequested) ReportFailure("实时音频发送中断或超时，转写已停止。请检查网络后重新启动。"); }
+        catch (StaleAudioException) { ReportFailure(AppText.T("音频发送积压超过约 3 秒，转写已停止，未重放过期音频。请检查网络后重新启动。", "Transcription stopped because queued audio was over 3 seconds old. Stale audio was not replayed. Check your network and start again.")); }
+        catch (Exception) { if (!token.IsCancellationRequested) ReportFailure(AppText.T("实时音频发送中断或超时，转写已停止。请检查网络后重新启动。", "Audio upload was interrupted or timed out. Transcription stopped; check your network and start again.")); }
         finally
         {
             _gate.Dispose();
@@ -351,7 +352,7 @@ public sealed class RealtimeTranscriber : ListeningSubtitles.Core.ITranscriber
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (Exception) { if (!token.IsCancellationRequested) ReportFailure("OpenAI 实时转写连接已中断，或返回了无效数据。转写已停止，请重新启动。"); }
+        catch (Exception) { if (!token.IsCancellationRequested) ReportFailure(AppText.T("OpenAI 实时转写连接已中断，或返回了无效数据。转写已停止，请重新启动。", "The OpenAI transcription connection closed or returned invalid data. Transcription stopped; start again.")); }
         finally
         {
             CryptographicOperations.ZeroMemory(frame);
@@ -387,7 +388,7 @@ public sealed class RealtimeTranscriber : ListeningSubtitles.Core.ITranscriber
         }
         if (type is "error" or "conversation.item.input_audio_transcription.failed")
         {
-            ReportFailure("OpenAI 实时转写返回错误，转写已停止。请检查 API 额度、模型权限和网络后重新启动。");
+            ReportFailure(AppText.T("OpenAI 实时转写返回错误，转写已停止。请检查 API 额度、模型权限和网络后重新启动。", "OpenAI transcription returned an error. Check your API credit, model access and network, then start again."));
             return;
         }
         if (type is not ("input_audio_buffer.committed" or "conversation.item.input_audio_transcription.delta" or "conversation.item.input_audio_transcription.completed")) return;

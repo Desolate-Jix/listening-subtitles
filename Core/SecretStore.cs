@@ -25,7 +25,7 @@ public sealed class SecretStore
     {
         if (!HasKey) return null;
         if (new FileInfo(_path).Length > 1024 * 1024)
-            throw new CryptographicException("已保存的 API 密钥文件无效，请重新输入密钥。");
+            throw new CryptographicException(AppText.T("已保存的 API 密钥文件无效，请重新输入密钥。", "The saved API key file is invalid. Enter your key again."));
         var protectedBytes = File.ReadAllBytes(_path);
         var plain = Transform(protectedBytes, protect: false);
         try
@@ -36,7 +36,7 @@ public sealed class SecretStore
         }
         catch (Exception ex) when (ex is DecoderFallbackException or ArgumentException)
         {
-            throw new CryptographicException("已保存的 API 密钥无效，请重新输入密钥。", ex);
+            throw new CryptographicException(AppText.T("已保存的 API 密钥无效，请重新输入密钥。", "The saved API key is invalid. Enter your key again."), ex);
         }
         finally { CryptographicOperations.ZeroMemory(plain); }
     }
@@ -58,12 +58,12 @@ public sealed class SecretStore
     internal static void ValidateKey(string apiKey)
     {
         if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Length > 8192 || apiKey.Any(c => char.IsControl(c) || char.IsWhiteSpace(c)))
-            throw new ArgumentException("API 密钥不能为空，且不能包含空格或换行。", nameof(apiKey));
+            throw new ArgumentException(AppText.T("API 密钥不能为空，且不能包含空格或换行。", "The API key cannot be empty or contain spaces or line breaks."), nameof(apiKey));
     }
 
     internal static FileStream CreatePrivateFile(string path)
     {
-        var user = WindowsIdentity.GetCurrent().User ?? throw new InvalidOperationException("无法确定当前 Windows 用户。");
+        var user = WindowsIdentity.GetCurrent().User ?? throw new InvalidOperationException(AppText.T("无法确定当前 Windows 用户。", "The current Windows user could not be identified."));
         var security = new FileSecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         security.SetOwner(user);
@@ -84,9 +84,9 @@ public sealed class SecretStore
                 ? CryptProtectData(ref input, label, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, CryptProtectUiForbidden, out output)
                 : CryptUnprotectData(ref input, out description, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, CryptProtectUiForbidden, out output);
             if (!ok)
-                throw new CryptographicException(protect ? "Windows 无法加密 API 密钥。" : "Windows 无法解密已保存的 API 密钥。请在原 Windows 账户中运行，或重新输入密钥。", new Win32Exception(Marshal.GetLastWin32Error()));
+                throw new CryptographicException(protect ? AppText.T("Windows 无法加密数据。", "Windows could not encrypt the data.") : AppText.T("Windows 无法解密已保存的数据。请使用原 Windows 账户运行。", "Windows could not decrypt the saved data. Run the app under the original Windows account."), new Win32Exception(Marshal.GetLastWin32Error()));
             if (output.Length < 0 || output.Length > maximumBytes)
-                throw new CryptographicException("Windows 返回的密钥数据无效。");
+                throw new CryptographicException(AppText.T("Windows 返回的加密数据无效。", "Windows returned invalid protected data."));
             var result = new byte[output.Length];
             Marshal.Copy(output.Data, result, 0, result.Length);
             return result;

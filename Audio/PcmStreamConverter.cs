@@ -1,3 +1,4 @@
+using ListeningSubtitles.Core;
 using System.Buffers.Binary;
 using NAudio.Wave;
 
@@ -50,14 +51,14 @@ public sealed class PcmStreamConverter
             || (floatingPoint ? format.BitsPerSample is not (32 or 64)
                 : encoding != WaveFormatEncoding.Pcm || format.BitsPerSample is not (8 or 16 or 24 or 32))
             || blockAlign != channels * bytesPerSample)
-            throw new ArgumentException("音频设备格式不受支持；需要 8–192kHz、最多 32 声道的 PCM 或浮点音频。", nameof(format));
+            throw new ArgumentException(AppText.T("音频设备格式不受支持；需要 8–192kHz、最多 32 声道的 PCM 或浮点音频。", "Unsupported device format: expected 8–192 kHz PCM or floating-point audio, with up to 32 channels."), nameof(format));
         pendingFrame = new byte[blockAlign];
     }
 
     public IReadOnlyList<PcmChunk> Consume(ReadOnlySpan<byte> input)
     {
         if (completed)
-            throw new InvalidOperationException("音频转换已经结束。");
+            throw new InvalidOperationException(AppText.T("音频转换已经结束。", "Audio conversion has already finished."));
         var output = new List<PcmChunk>();
         if (pendingCount != 0)
         {
@@ -95,7 +96,7 @@ public sealed class PcmStreamConverter
         if (completed)
             return Array.Empty<PcmChunk>();
         if (pendingCount != 0)
-            throw new FormatException("音频数据在不完整的采样帧处结束。");
+            throw new FormatException(AppText.T("音频数据在不完整的采样帧处结束。", "Audio ended with an incomplete sample frame."));
         completed = true;
         var output = new List<PcmChunk>();
         if (sampleRate != OutputSampleRate)
@@ -149,7 +150,7 @@ public sealed class PcmStreamConverter
             2 => BinaryPrimitives.ReadInt16LittleEndian(sample) / 32768.0,
             3 => ((sample[0] | sample[1] << 8 | sample[2] << 16) << 8 >> 8) / 8388608.0,
             4 => BinaryPrimitives.ReadInt32LittleEndian(sample) / 2147483648.0,
-            _ => throw new InvalidOperationException("音频采样格式无效。")
+            _ => throw new InvalidOperationException(AppText.T("音频采样格式无效。", "Invalid audio sample format."))
         };
     }
 

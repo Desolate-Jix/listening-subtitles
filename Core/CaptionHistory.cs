@@ -1,7 +1,10 @@
+using System.Text.Json.Serialization;
+
 namespace ListeningSubtitles.Core;
 
 public sealed record Caption(string Id, long Session, long Sequence, DateTimeOffset Time, string Original, bool Final,
-    string Chinese = "", string TranslationStatus = "", DateTimeOffset? EndTime = null);
+    [property: JsonPropertyName("Chinese")] string Translation = "", string TranslationStatus = "", DateTimeOffset? EndTime = null,
+    string TranslationLanguage = "zh-Hans", string SourceLanguages = "");
 
 public sealed record CaptionRecord(int Version, Guid Id, DateTimeOffset StartedAt, Caption[] Captions);
 
@@ -20,7 +23,8 @@ public sealed class CaptionHistory
         if (_entries.TryGetValue(incoming.Id, out var old) && old.Final && !incoming.Final) return;
         // A partial has no translation state to preserve when promoted to a final.
         if (old is { Final: true } && old.Original == incoming.Original)
-            incoming = incoming with { Chinese = old.Chinese, TranslationStatus = old.TranslationStatus };
+            incoming = incoming with { Translation = old.Translation, TranslationStatus = old.TranslationStatus,
+                TranslationLanguage = old.TranslationLanguage, SourceLanguages = old.SourceLanguages };
         if (old == incoming) return;
         _entries[incoming.Id] = incoming;
         Changed?.Invoke();
@@ -28,10 +32,12 @@ public sealed class CaptionHistory
     public void Translate(TranscriptTranslationUpdate update)
     {
         if (!_entries.TryGetValue(update.Id, out var caption) || !caption.Final || caption.Original != update.OriginalText) return;
+        var completed = update.Status == "completed" && !string.IsNullOrWhiteSpace(update.Translation) && TranslationLanguages.IsSupported(update.TargetLanguage);
         var changed = caption with
         {
-            Chinese = update.Translation.Length > 0 ? update.Translation : caption.Chinese,
-            TranslationStatus = caption.Chinese.Length > 0 && update.Translation.Length == 0 ? "completed" : update.Status
+            Translation = completed ? update.Translation : caption.Translation,
+            TranslationLanguage = completed ? TranslationLanguages.Find(update.TargetLanguage)!.Code : caption.TranslationLanguage,
+            TranslationStatus = caption.Translation.Length > 0 && !completed ? "completed" : update.Status
         };
         if (caption == changed) return;
         _entries[update.Id] = changed; Changed?.Invoke();
@@ -56,10 +62,26 @@ public sealed class CaptionHistory
         foreach (var entry in record.Captions) _entries.Add(entry.Id, entry);
         MarkStopped(); Changed?.Invoke();
     }
-    public string Export(bool startAtFirstCaption = true, TimeSpan offset = default)
+    public string Export(bool startAtFirstCaption = true, TimeSpan offset = default, string? targetLanguage = null,
+        CaptionLanguage language = CaptionLanguage.Bilingual)
     {
         var origin = CaptionTimeline.Origin(Snapshot(), startAtFirstCaption);
-        return string.Join(Environment.NewLine + Environment.NewLine, Entries.Select(c =>
-            $"[{CaptionTimeline.Display(c.Time, origin, offset)}] {(c.Final ? "" : "[未完成] ")}{c.Original}\n{c.Chinese}"));
+        var rows = new List<string>();
+        foreach (var caption in Entries)
+        {
+            var translation = targetLanguage is null || string.Equals(caption.TranslationLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase)
+                ? caption.Translation : "";
+            if (language == CaptionLanguage.Translation && string.IsNullOrWhiteSpace(translation)) continue;
+            var text = language switch
+            {
+                CaptionLanguage.Original => caption.Original,
+                CaptionLanguage.Translation => translation,
+                _ => caption.Original + "\n" + translation
+            };
+            rows.Add($"[{CaptionTimeline.Display(caption.Time, origin, offset)}] {(caption.Final ? "" : AppText.T("[未完成] ", "[Incomplete] "))}{text}");
+        }
+        if (language == CaptionLanguage.Translation && rows.Count == 0)
+            throw new InvalidOperationException(AppText.T("没有可导出的目标语言译文，请先补译 / 重译。", "There are no translations in the selected language to export. Fill / retranslate first."));
+        return string.Join(Environment.NewLine + Environment.NewLine, rows);
     }
 }

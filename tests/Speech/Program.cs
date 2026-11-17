@@ -3,10 +3,12 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using ListeningSubtitles.Audio;
+using ListeningSubtitles.Core;
 using ListeningSubtitles.Speech;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Interface language localizes errors without changing speech data", InterfaceLanguage),
     ("Session uses official endpoint and GA PCM transcription schema", Schema),
     ("VAD suppresses silence and short noise, preserving onset", VoiceGate),
     ("VAD commits silence, callback cessation and maximum duration", VoiceBoundaries),
@@ -35,6 +37,22 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures}/{tests.Length} passed.");
 return failures == 0 ? 0 : 1;
+
+static Task InterfaceLanguage()
+{
+    var before = AppText.Language;
+    try
+    {
+        AppText.Language = "en";
+        var error = Throws<ArgumentException>(() => new RealtimeTranscriber(AudioSourceKind.System, "invalid"));
+        Check(error.Message.StartsWith("Realtime transcription supports"), "English interface still showed Chinese model error");
+        AppText.Language = "zh-CN";
+        var chinese = Throws<ArgumentException>(() => new RealtimeTranscriber(AudioSourceKind.System, "invalid"));
+        Check(chinese.Message.StartsWith("实时转写"), "Chinese interface error did not return");
+    }
+    finally { AppText.Language = before; }
+    return Task.CompletedTask;
+}
 
 static async Task Schema()
 {

@@ -1,3 +1,4 @@
+using ListeningSubtitles.Core;
 using System.Diagnostics;
 using System.Threading.Channels;
 using NAudio.CoreAudioApi;
@@ -42,7 +43,7 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
         lock (controlGate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            if (current is not null) throw new InvalidOperationException("电脑声音采集已经启动，请先停止。");
+            if (current is not null) throw new InvalidOperationException(AppText.T("电脑声音采集已经启动，请先停止。", "System audio capture is already running. Stop it first."));
             var session = new Session();
             session.Automatic[0] = monitorFactory is not null && string.IsNullOrWhiteSpace(outputDeviceId);
             Volatile.Write(ref current, session);
@@ -63,13 +64,13 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
                 foreach (var input in session.Inputs)
                 {
                     input!.Endpoint.StartRecording();
-                    if (Volatile.Read(ref input.Faulted) != 0) throw new InvalidOperationException("音频设备启动中断。");
+                    if (Volatile.Read(ref input.Faulted) != 0) throw new InvalidOperationException(AppText.T("音频设备启动中断。", "Audio device startup was interrupted."));
                 }
                 foreach (var input in session.Inputs)
                 {
                     input!.ActivatedAt = Stopwatch.GetTimestamp();
                     if (Volatile.Read(ref input!.Faulted) != 0 || Interlocked.CompareExchange(ref input.Active, 1, 0) != 0)
-                        throw new InvalidOperationException("音频设备启动中断。");
+                        throw new InvalidOperationException(AppText.T("音频设备启动中断。", "Audio device startup was interrupted."));
                 }
                 session.Started = true;
                 _ = Task.Run(() => DispatchAsync(session));
@@ -83,7 +84,7 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
             catch
             {
                 Volatile.Write(ref current, null); ReleaseSession(session);
-                throw new InvalidOperationException("无法启动电脑声音采集。请检查 Windows 默认或手选输出设备，以及其他应用的独占占用，然后重新开始。");
+                throw new InvalidOperationException(AppText.T("无法启动电脑声音采集。请检查 Windows 默认或手选输出设备，以及其他应用的独占占用，然后重新开始。", "Unable to capture system audio. Check the selected or default Windows playback device and any exclusive use by another app, then start again."));
             }
         }
     }
@@ -115,7 +116,7 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
                 Interlocked.Exchange(ref input.Faulted, 1); Interlocked.Exchange(ref input.Active, -1);
                 if (!IsInputOwned(session, input)) return;
                 if (session.Automatic[(int)source]) RequestSwitch(session, source);
-                else RequestFailure(session, "手选输出设备已中断，电脑声音采集已停止。请检查设备后重新开始。");
+                else RequestFailure(session, AppText.T("手选输出设备已中断，电脑声音采集已停止。请检查设备后重新开始。", "The selected playback device disconnected. Capture stopped; check the device and start again."));
             };
             endpoint.DataAvailable += input.DataHandler; endpoint.RecordingStopped += input.StoppedHandler;
             return input;
@@ -134,7 +135,7 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
         {
             if (args.BytesRecorded < 0 || args.BytesRecorded > args.Buffer.Length
                 || args.BytesRecorded > (long)input.Endpoint.WaveFormat.AverageBytesPerSecond * 2)
-            { RequestFailure(session, "音频缓冲区溢出，电脑声音采集已停止。请减轻电脑负载后重新开始。"); return; }
+            { RequestFailure(session, AppText.T("音频缓冲区溢出，电脑声音采集已停止。请减轻电脑负载后重新开始。", "Audio buffer overflow. Capture stopped; reduce system load and start again.")); return; }
             lock (input.ConvertGate)
             {
                 if (!CanDeliver(session, input)) return;
@@ -146,13 +147,13 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
                     if (!session.Queue.Writer.TryWrite(new DispatchItem(input, chunk)))
                     {
                         input.PendingChunks.Remove(chunk.Data); Array.Clear(chunk.Data); overflow = true;
-                        RequestFailure(session, "音频处理队列已满，电脑声音采集已停止。请检查网络与电脑负载后重新开始。");
+                        RequestFailure(session, AppText.T("音频处理队列已满，电脑声音采集已停止。请检查网络与电脑负载后重新开始。", "The audio queue is full. Capture stopped; check your network and system load, then start again."));
                     }
                     else Volatile.Write(ref input.ProducedData, 1);
                 }
             }
         }
-        catch { RequestFailure(session, "音频格式转换失败，电脑声音采集已停止。请重新选择设备后再试。"); }
+        catch { RequestFailure(session, AppText.T("音频格式转换失败，电脑声音采集已停止。请重新选择设备后再试。", "Audio conversion failed. Capture stopped; select a playback device and try again.")); }
     }
     private async Task DispatchAsync(Session session)
     {
@@ -174,10 +175,10 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
                     else if (item.Chunk is null) EndpointChanged?.Invoke(item.Input.Source);
                     else ChunkAvailable?.Invoke(item.Chunk);
                 }
-                catch { FailSession(session, "音频处理回调失败，电脑声音采集已停止。请重新开始。"); return; }
+                catch { FailSession(session, AppText.T("音频处理回调失败，电脑声音采集已停止。请重新开始。", "Audio processing failed. Capture stopped; start again.")); return; }
             }
         }
-        catch { FailSession(session, "音频处理已中断，电脑声音采集已停止。请重新开始。"); }
+        catch { FailSession(session, AppText.T("音频处理已中断，电脑声音采集已停止。请重新开始。", "Audio processing was interrupted. Capture stopped; start again.")); }
     }
     // COM/NAudio callbacks only mark dirty state; no waits, releases or observer calls here.
     private void RequestSwitch(Session session, AudioSourceKind source)
@@ -199,12 +200,12 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
             }
         }
         catch (OperationCanceledException) when (!IsCurrent(session)) { }
-        catch { FailSession(session, "音频设备切换失败，电脑声音采集已停止。请检查 Windows 默认设备后重新开始。"); }
+        catch { FailSession(session, AppText.T("音频设备切换失败，电脑声音采集已停止。请检查 Windows 默认设备后重新开始。", "Unable to switch audio devices. Capture stopped; check the Windows default device and start again.")); }
     }
     private string ReadDefault(Session session, AudioSourceKind source)
     {
         var id = session.Monitor!.GetDefaultId(source);
-        return !string.IsNullOrWhiteSpace(id) ? id : throw new InvalidOperationException("当前无可用默认音频设备。");
+        return !string.IsNullOrWhiteSpace(id) ? id : throw new InvalidOperationException(AppText.T("当前无可用默认音频设备。", "No default audio device is currently available."));
     }
     private async Task ReconcileAsync(Session session, AudioSourceKind source)
     {
@@ -232,7 +233,7 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
                 ReleaseInput(old);
                 if (!boundaryQueued)
                 {
-                    FailSession(session, "音频切换边界队列已满，电脑声音采集已停止。请重新开始。"); return;
+                    FailSession(session, AppText.T("音频切换边界队列已满，电脑声音采集已停止。请重新开始。", "The device-switch queue is full. Capture stopped; start again.")); return;
                 }
             }
             if (!IsCurrent(session)) return;
@@ -258,11 +259,11 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
                                 lock (candidate.ConvertGate)
                                 {
                                     Volatile.Write(ref session.Inputs[(int)source], candidate);
-                                    if (!session.Queue.Writer.TryWrite(new DispatchItem(candidate, null))) throw new InvalidOperationException("切换事件队列已满。");
+                                    if (!session.Queue.Writer.TryWrite(new DispatchItem(candidate, null))) throw new InvalidOperationException(AppText.T("切换事件队列已满。", "The device-switch event queue is full."));
                                     // CAS cannot resurrect a candidate whose worker has already stopped.
                                     candidate.ActivatedAt = Stopwatch.GetTimestamp();
                                     if (Volatile.Read(ref candidate.Faulted) != 0 || Interlocked.CompareExchange(ref candidate.Active, 1, 0) != 0)
-                                        throw new InvalidOperationException("新音频设备启动中断。");
+                                        throw new InvalidOperationException(AppText.T("新音频设备启动中断。", "Startup of the replacement audio device was interrupted."));
                                     committed = true;
                                 }
                             }
@@ -289,7 +290,7 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
     private bool RecoveryExpired(Session session, AudioSourceKind source) =>
         Stopwatch.GetElapsedTime(session.RecoveryStartedAt[(int)source]) >= recoveryWindow;
     private void FailRecovery(Session session, AudioSourceKind source) => FailSession(session,
-        "未能在短暂等待后连接 Windows 新默认输出，电脑声音采集已停止。请检查耳机或扬声器后重新开始。");
+        AppText.T("未能在短暂等待后连接 Windows 新默认输出，电脑声音采集已停止。请检查耳机或扬声器后重新开始。", "Unable to connect to the new Windows default output after a short wait. Capture stopped; check your headphones or speakers and start again."));
     private void RequestFailure(Session session, string message)
     {
         if (!IsCurrent(session) || Interlocked.Exchange(ref session.FailureRequested, 1) != 0) return;
@@ -344,16 +345,16 @@ public sealed class SystemAudioCapture : ListeningSubtitles.Core.IAudioInput
             foreach (var device in enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active)) using (device) result.Add(new AudioDeviceInfo(device.ID, device.FriendlyName));
             return result;
         }
-        catch { throw new InvalidOperationException("无法列出音频设备，请检查 Windows 音频服务和设备连接。"); }
+        catch { throw new InvalidOperationException(AppText.T("无法列出音频设备，请检查 Windows 音频服务和设备连接。", "Unable to list audio devices. Check the Windows audio service and device connections.")); }
     }
     private static IWaveIn CreateEndpoint(AudioSourceKind source, string? id)
     {
-        if (source != AudioSourceKind.System) throw new ArgumentException("听力字幕只采集电脑播放声音。");
+        if (source != AudioSourceKind.System) throw new ArgumentException(AppText.T("听力字幕只采集电脑播放声音。", "Listening Subtitles captures system playback audio only."));
         using var enumerator = new MMDeviceEnumerator();
         var device = string.IsNullOrWhiteSpace(id) ? enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia) : enumerator.GetDevice(id);
         try
         {
-            if (device.State != DeviceState.Active || device.DataFlow != DataFlow.Render) throw new InvalidOperationException("所选输出设备不可用。");
+            if (device.State != DeviceState.Active || device.DataFlow != DataFlow.Render) throw new InvalidOperationException(AppText.T("所选输出设备不可用。", "The selected playback device is unavailable."));
             return new OwnedEndpoint(device, new SafeWasapiCapture(device, loopback: true));
         }
         catch { device.Dispose(); throw; }

@@ -3,13 +3,14 @@ using System.Text;
 
 namespace ListeningSubtitles.Core;
 
-public enum CaptionLanguage { Bilingual, Original, Chinese }
+public enum CaptionLanguage { Bilingual, Original, Translation }
 public enum CaptionFormat { Srt, Vtt }
 
 public static class CaptionExporter
 {
     // Segment times come from local audio capture, never from translation completion.
-    public static string Export(CaptionRecord record, CaptionFormat format, CaptionLanguage language, TimeSpan offset, bool startAtFirstCaption = true)
+    public static string Export(CaptionRecord record, CaptionFormat format, CaptionLanguage language, TimeSpan offset, bool startAtFirstCaption = true,
+        string? targetLanguage = null)
     {
         var output = new StringBuilder(format == CaptionFormat.Vtt ? "WEBVTT\n\n" : "");
         var rows = record.Captions.Where(c => c.Final).OrderBy(c => c.Time).ThenBy(c => c.Sequence).ToArray();
@@ -18,11 +19,13 @@ public static class CaptionExporter
         for (int i = 0; i < rows.Length; i++)
         {
             var row = rows[i];
+            var translation = targetLanguage is null || string.Equals(row.TranslationLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase)
+                ? row.Translation : "";
             var text = language switch
             {
                 CaptionLanguage.Original => row.Original,
-                CaptionLanguage.Chinese => row.Chinese,
-                _ => row.Original + "\n" + row.Chinese
+                CaptionLanguage.Translation => translation,
+                _ => row.Original + "\n" + translation
             };
             text = Clean(text);
             if (text.Length == 0) continue;
@@ -37,7 +40,7 @@ public static class CaptionExporter
                 .Append(Timestamp(from, format)).Append(" --> ").Append(Timestamp(to, format)).Append('\n')
                 .Append(text).Append("\n\n");
         }
-        if (index == 0) throw new InvalidOperationException("没有可导出的完整字幕；请等待完整句，或检查语言与时间偏移。");
+        if (index == 0) throw new InvalidOperationException(AppText.T("没有可导出的完整字幕；请等待完整句，或检查语言与时间偏移。", "There are no complete subtitles to export. Wait for a complete segment, or check the language and time offset."));
         return output.ToString();
     }
     public static void Write(string path, string content)

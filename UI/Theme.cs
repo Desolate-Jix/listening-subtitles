@@ -19,6 +19,7 @@ internal static class Theme
         var button = new Button { Text = text, AutoSize = true, MinimumSize = new(76, 34), FlatStyle = FlatStyle.Flat,
             BackColor = primary ? Mint : Surface, ForeColor = primary ? Background : Ink, Margin = new(4), Padding = new(4) };
         button.FlatAppearance.BorderSize = 0;
+        button.EnabledChanged += (_, _) => button.BackColor = button.Enabled ? (primary ? Mint : Surface) : Color.FromArgb(138, 152, 168);
         button.Click += action; return button;
     }
     public static RichTextBox TextArea(int size, Color color) => new()

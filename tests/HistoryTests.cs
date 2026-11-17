@@ -27,7 +27,7 @@ internal static class HistoryTests
             Check(!Encoding.UTF8.GetString(File.ReadAllBytes(path)).Contains("English sentence"), "history stored plaintext");
             var restored = new CaptionHistory(); restored.Load(new CaptionStore(directory).Read(store.List().Single()));
             Check(restored.Id == id && restored.Entries.Count == 605, "restart lost records or identity");
-            Check(restored.Entries[0].Chinese == "最早的一段中文也要保留。", "restart lost Chinese");
+            Check(restored.Entries[0].Translation == "最早的一段中文也要保留。", "restart lost Chinese");
             Check(restored.Entries[1].TranslationStatus == "cancelled", "restored stale translation marked running");
             Check(restored.Entries[0].EndTime == start.AddSeconds(4), "timing lost on disk");
             history.Clear(); history.Upsert(new("id-0", 1, 1, DateTimeOffset.UtcNow, "New session.", true));
@@ -55,7 +55,7 @@ internal static class HistoryTests
         Check(!srt.Contains("<tag>") && srt.Contains("&lt;tag&gt; &amp;"), "text interpreted as cue markup");
         var vtt = CaptionExporter.Export(history.Snapshot(), CaptionFormat.Vtt, CaptionLanguage.Bilingual, TimeSpan.FromSeconds(60));
         Check(vtt.StartsWith("WEBVTT\n\n1\n00:01:00.000 --> 00:01:02.250\n") && vtt.Contains("第二句话。"), "VTT/offset invalid");
-        var chinese = CaptionExporter.Export(history.Snapshot(), CaptionFormat.Srt, CaptionLanguage.Chinese, TimeSpan.FromSeconds(-2));
+        var chinese = CaptionExporter.Export(history.Snapshot(), CaptionFormat.Srt, CaptionLanguage.Translation, TimeSpan.FromSeconds(-2));
         Check(chinese.Contains("00:00:00,000 --> 00:00:00,250") && !chinese.Contains("First") && chinese.Contains("第一"), "negative shift/Chinese-only invalid");
         var recording = CaptionExporter.Export(history.Snapshot(), CaptionFormat.Srt, CaptionLanguage.Bilingual, TimeSpan.Zero, false);
         Check(recording.StartsWith("1\n00:00:01,250 --> 00:00:03,500\n"), "recording origin option lost initial silence");
@@ -111,20 +111,20 @@ internal static class HistoryTests
             store.Save(history);
             var result = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             var calls = 0;
-            using (var form = new HistoryForm(history, store, () => (text, token) => { calls++; return result.Task; }))
+            using (var form = new HistoryForm(history, store, () => (text, sourceLanguages, token) => { calls++; return result.Task; }))
             {
                 form.Show(); Application.DoEvents();
                 Check(calls == 0, "opening history invoked API");
                 var list = form.Controls.OfType<ListBox>().Single();
                 Check(list.Items[0]!.ToString()!.StartsWith("[00:00:00.000]"), "history still displays wall clock");
-                var task = (Task)typeof(HistoryForm).GetMethod("FillChineseAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(form, null)!;
+                var task = (Task)typeof(HistoryForm).GetMethod("FillTranslationAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(form, null)!;
                 Check(calls == 1, "explicit retry did not start");
                 result.SetResult("补译完成并保存。");
                 Pump(() => task.IsCompleted);
                 task.GetAwaiter().GetResult();
-                Check(history.Latest!.Chinese == "补译完成并保存。", "manual retry lost Chinese");
+                Check(history.Latest!.Translation == "补译完成并保存。", "manual retry lost Chinese");
                 Check(form.Controls.OfType<RichTextBox>().Single().Text.Contains("补译完成"), "manual translation did not update open history");
-                Check(store.Read(store.List().Single()).Captions.Single().Chinese == "补译完成并保存。", "manual translation not saved");
+                Check(store.Read(store.List().Single()).Captions.Single().Translation == "补译完成并保存。", "manual translation not saved");
                 form.Close();
             }
             // Real form lifecycle, isolated data directory and no recording/API.
@@ -133,7 +133,7 @@ internal static class HistoryTests
             {
                 form.Show(); Application.DoEvents();
                 var restored = (CaptionHistory)typeof(SubtitleForm).GetField("_history", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(form)!;
-                Check(restored.Latest!.Chinese == "补译完成并保存。", "app startup did not restore history");
+                Check(restored.Latest!.Translation == "补译完成并保存。", "app startup did not restore history");
                 restored.Upsert(new("new", 1, 2, DateTimeOffset.Now, "Auto save me.", true, "自动保存。", "completed"));
                 Pump(() => store.Read(store.List().Single()).Captions.Length == 2);
                 form.Close(); Pump(() => form.IsDisposed);
@@ -142,7 +142,7 @@ internal static class HistoryTests
             {
                 form.Show(); Application.DoEvents();
                 var restored = (CaptionHistory)typeof(SubtitleForm).GetField("_history", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(form)!;
-                Check(restored.Latest!.Chinese == "自动保存。", "auto save did not survive reopen");
+                Check(restored.Latest!.Translation == "自动保存。", "auto save did not survive reopen");
                 form.Close(); Pump(() => form.IsDisposed);
             }
         }

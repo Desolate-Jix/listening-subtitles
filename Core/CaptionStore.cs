@@ -31,7 +31,7 @@ public sealed class CaptionStore(string directory)
         var plain = JsonSerializer.SerializeToUtf8Bytes(record);
         try
         {
-            if (plain.Length > MaximumBytes - 4096) throw new IOException("本场记录过大，请先导出字幕，再开始新记录。");
+            if (plain.Length > MaximumBytes - 4096) throw new IOException(AppText.T("本场记录过大，请先导出字幕，再开始新记录。", "This session is too large. Export the subtitles, then start a new session."));
             var encrypted = SecretStore.Transform(plain, true, "Listening Subtitles history", MaximumBytes);
             StorageFiles.WriteAtomic(Path.Combine(DirectoryPath, name), encrypted, SecretStore.CreatePrivateFile);
             return Path.Combine(DirectoryPath, name);
@@ -40,18 +40,18 @@ public sealed class CaptionStore(string directory)
     }
     public CaptionRecord Read(SavedCaptionRecord saved)
     {
-        if (saved.FileName != Path.GetFileName(saved.FileName)) throw new InvalidDataException("历史文件名无效。");
+        if (saved.FileName != Path.GetFileName(saved.FileName)) throw new InvalidDataException(AppText.T("历史文件名无效。", "The history file name is invalid."));
         var path = Path.Combine(DirectoryPath, saved.FileName);
-        if (new FileInfo(path).Length > MaximumBytes) throw new InvalidDataException("历史文件过大。");
+        if (new FileInfo(path).Length > MaximumBytes) throw new InvalidDataException(AppText.T("历史文件过大。", "The history file is too large."));
         var plain = SecretStore.Transform(File.ReadAllBytes(path), false, maximumBytes: MaximumBytes);
         try
         {
             var record = JsonSerializer.Deserialize<CaptionRecord>(plain);
             if (record is not { Version: 1 } || record.Id == Guid.Empty || record.Captions is null ||
                 record.Captions.Any(c => c is null || string.IsNullOrWhiteSpace(c.Id) || c.Original is null ||
-                    c.Chinese is null || c.TranslationStatus is null) ||
+                    c.Translation is null || c.TranslationStatus is null || c.SourceLanguages is null || !TranslationLanguages.IsSupported(c.TranslationLanguage)) ||
                 record.Captions.Select(c => c.Id).Distinct(StringComparer.Ordinal).Count() != record.Captions.Length)
-                throw new InvalidDataException("历史文件内容无效。");
+                throw new InvalidDataException(AppText.T("历史文件内容无效。", "The history file content is invalid."));
             return record;
         }
         finally { CryptographicOperations.ZeroMemory(plain); }

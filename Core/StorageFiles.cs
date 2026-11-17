@@ -3,7 +3,7 @@ internal static class StorageFiles
 {
     internal static void WriteAtomic(string path, byte[] data, Func<string, FileStream>? createFile = null)
     {
-        var directory = Path.GetDirectoryName(path) ?? throw new ArgumentException("存储目录无效。", nameof(path));
+        var directory = Path.GetDirectoryName(path) ?? throw new ArgumentException(AppText.T("存储目录无效。", "The storage directory is invalid."), nameof(path));
         Directory.CreateDirectory(directory);
         var temporary = Path.Combine(directory, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
         try
