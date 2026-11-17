@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.2.0</Version>
+    <Description>Windows live speech recognition, subtitle transcription, translation and SRT/WebVTT export</Description>
+    <RepositoryUrl>https://github.com/Desolate-Jix/listening-subtitles</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Authors>Desolate-Jix</Authors>
+    <PathMap>$(MSBuildProjectDirectory)=/_/ListeningSubtitles</PathMap>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.4.0" />
+    <Compile Remove="tests/**/*.cs" />
+  </ItemGroup>
+</Project>
