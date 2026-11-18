@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>Listening Subtitles</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#18514e"/>
+      <stop offset="1" stop-color="#0c2331"/>
+    </linearGradient>
+    <linearGradient id="speech" x1="0" y1="0" x2="0.9" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#e5fff4"/>
+      <stop offset="1" stop-color="#6de4c6"/>
+    </linearGradient>
+  </defs>
+  <rect x="7" y="7" width="242" height="242" rx="55" fill="url(#tile)" stroke="#3b6e69" stroke-width="3"/>
+  <path d="M68 54h120c18 0 30 12 30 30v66c0 18-12 30-30 30h-83l-32 24c-4 3-9 0-9-5v-19c-16-1-26-13-26-30V84c0-18 12-30 30-30Z" fill="url(#speech)"/>
+  <g fill="#164b49">
+    <rect x="61" y="104" width="12" height="28" rx="6"/>
+    <rect x="81" y="86" width="14" height="64" rx="7"/>
+    <rect x="103" y="98" width="12" height="40" rx="6"/>
+    <rect x="130" y="100" width="64" height="13" rx="6.5"/>
+    <rect x="130" y="125" width="45" height="13" rx="6.5"/>
+  </g>
+</svg>

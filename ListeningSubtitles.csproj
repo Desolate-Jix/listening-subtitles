@@ -6,7 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.5.0</Version>
+    <ApplicationIcon>assets/listening-subtitles.ico</ApplicationIcon>
+    <Version>1.6.0</Version>
     <Description>Bilingual Windows speech recognition, multilingual subtitle translation and SRT/WebVTT export</Description>
     <RepositoryUrl>https://github.com/Desolate-Jix/listening-subtitles</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -17,5 +18,6 @@
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.4.0" />
     <Compile Remove="tests/**/*.cs" />
+    <EmbeddedResource Include="assets/listening-subtitles.ico" LogicalName="ListeningSubtitles.UI.ListeningSubtitles.ico" />
   </ItemGroup>
 </Project>

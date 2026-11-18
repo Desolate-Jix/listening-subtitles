@@ -182,7 +182,7 @@ public sealed partial class SubtitleForm
         var status = _overlayStatus;
         if (status.Length == 0 && caption is null && !_session.Active && !_busy)
             status = _settings.LyricsLocked
-                ? AppText.T("歌词已锁定 · 右键托盘图标可解锁", "Lyrics locked · Right-click the tray icon to unlock")
+                ? AppText.T("歌词已锁定 · 移到字幕上可解锁", "Lyrics locked · Hover over the captions to unlock")
                 : AppText.T("移到字幕上，点击开始", "Hover over the lyrics and select Start");
         if (status.Length == 0 && _show.Checked && caption?.TranslationStatus is "busy" or "error")
             status = _translated.Text;

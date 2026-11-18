@@ -2,6 +2,8 @@ namespace ListeningSubtitles.UI;
 
 internal static class Theme
 {
+    internal static Icon AppIcon { get; } = new(typeof(Theme), "ListeningSubtitles.ico");
+    internal static Icon TrayIcon { get; } = new(AppIcon, SystemInformation.SmallIconSize);
     public static readonly Color Background = Color.FromArgb(20, 27, 38);
     public static readonly Color Surface = Color.FromArgb(32, 42, 56);
     public static readonly Color Ink = Color.FromArgb(242, 245, 250);
@@ -12,7 +14,7 @@ internal static class Theme
         form.Font = new Font("Microsoft YaHei UI", 10);
         form.BackColor = Background; form.ForeColor = Ink;
         form.AutoScaleMode = AutoScaleMode.Dpi;
-        form.Icon = SystemIcons.Application;
+        form.Icon = AppIcon;
     }
     public static Button Button(string text, EventHandler action, bool primary = false)
     {

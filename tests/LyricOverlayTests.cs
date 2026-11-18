@@ -181,7 +181,7 @@ internal static class LyricOverlayTests
         dark.Save(Path.Combine(destination, prefix + "-on-dark-video.png"), ImageFormat.Png);
     }
 
-    private static Bitmap Background(Size size, bool light)
+    internal static Bitmap Background(Size size, bool light)
     {
         var bitmap = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppArgb);
         using var graphics = Graphics.FromImage(bitmap);
@@ -194,7 +194,7 @@ internal static class LyricOverlayTests
         return bitmap;
     }
 
-    private static Bitmap Composite(Bitmap background, Bitmap frame)
+    internal static Bitmap Composite(Bitmap background, Bitmap frame)
     {
         var result = (Bitmap)background.Clone();
         using var graphics = Graphics.FromImage(result);

@@ -21,6 +21,8 @@ internal static class Program
         {
             LyricOverlayTests.Ui(args.FirstOrDefault()); passed++; Console.WriteLine("PASS default transparent lyrics, control panel switching and native alpha rendering");
             LyricToolbarTests.Ui(args.FirstOrDefault()); passed++; Console.WriteLine("PASS hover toolbar, release gestures, font preferences and persistent click-through lock");
+            LockedHoverTests.Ui(args.FirstOrDefault()); passed++; Console.WriteLine("PASS separate unlock window, native pass-through, lifecycle and synthetic release");
+            SettingsNavigationTests.Ui(args.FirstOrDefault()); passed++; Console.WriteLine("PASS settings pages, draft preservation, keyboard save/cancel and isolated errors");
             LyricContextTests.Ui(args.FirstOrDefault()); passed++; Console.WriteLine("PASS previous subtitle context, delayed translations and separate compact row");
             Ui(args.FirstOrDefault()); passed++; Console.WriteLine("PASS settings/history render and safe defaults");
             HistoryTests.Ui(); passed++; Console.WriteLine("PASS history recovery, live refresh and explicit Chinese retry");

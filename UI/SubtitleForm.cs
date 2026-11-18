@@ -89,7 +89,7 @@ public sealed partial class SubtitleForm : Form
         _trayStop.Name = "stop";
         BuildLyricsMenu();
         _trayExit = _menu.Items.Add("", null, (_, _) => Close());
-        _tray = new NotifyIcon { Icon = SystemIcons.Application, Visible = true, ContextMenuStrip = _menu };
+        _tray = new NotifyIcon { Icon = Theme.TrayIcon, Visible = true, ContextMenuStrip = _menu };
         _tray.DoubleClick += (_, _) => { if (CanUseMenu()) ShowLyrics(); };
         _session.CaptionChanged += caption => Post(() =>
         {
