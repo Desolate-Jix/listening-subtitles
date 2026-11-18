@@ -52,6 +52,8 @@ internal static class LanguageTests
             using (var form = new SubtitleForm(store, selected))
             {
                 form.Show(); Application.DoEvents();
+                typeof(SubtitleForm).GetMethod("ShowControlPanel", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(form, null);
+                Application.DoEvents();
                 Check(form.Text == "Listening Subtitles" && Descendants(form).Any(control => control.Text == "Start"), "English startup failed to localize existing controls");
                 Check(Descendants(form).Any(control => control.Text == "Show translation · English"), "target language label mislabeled English as Chinese");
                 var session = (LiveSession)typeof(SubtitleForm).GetField("_session", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(form)!;

@@ -34,8 +34,7 @@ internal static class Program
                         new("demo-1", 1, 1, DateTimeOffset.Now, "You do not have to understand every word to follow the story.", true, "你不必听懂每一个词，也能跟上故事的内容。", "completed"),
                         new("demo-2", 1, 2, DateTimeOffset.Now, "Try listening for the main idea first.", false));
                     Directory.CreateDirectory(args[1]);
-                    using var picture = new Bitmap(form.Width, form.Height);
-                    form.DrawToBitmap(picture, new Rectangle(Point.Empty, form.Size));
+                    using var picture = form.CaptureLyricFrame();
                     picture.Save(Path.Combine(args[1], "subtitle-window.png"));
                     form.Close();
                 };

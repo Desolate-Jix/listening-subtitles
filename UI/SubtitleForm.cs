@@ -2,7 +2,7 @@ using ListeningSubtitles.Core;
 
 namespace ListeningSubtitles.UI;
 
-public sealed class SubtitleForm : Form
+public sealed partial class SubtitleForm : Form
 {
     private readonly ListeningSettingsStore _store;
     private ListeningSettings _settings;
@@ -28,7 +28,7 @@ public sealed class SubtitleForm : Form
     private readonly ToolStripItem _trayShow, _trayStop, _trayExit;
     private readonly System.Windows.Forms.Timer _meter = new() { Interval = 150 };
     private float _lastLevel;
-    private bool _busy, _closing, _exitReady;
+    private bool _busy, _closing, _exitReady, _partialNeedsRender;
 
     public SubtitleForm(ListeningSettingsStore store, ListeningSettings settings)
     {
@@ -50,6 +50,8 @@ public sealed class SubtitleForm : Form
         StartPosition = FormStartPosition.Manual;
         var area = Screen.PrimaryScreen!.WorkingArea;
         Location = new(Math.Max(area.Left, area.Left + (area.Width - Width) / 2), Math.Max(area.Top, area.Bottom - Height - 30));
+        // Application.Run owns this control window even when the lyrics are the visible surface.
+        Opacity = 0;
         TopMost = settings.AlwaysOnTop;
         _session = new LiveSession(_translation.TranslateAsync);
         var controls = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new(10, 4, 10, 4), WrapContents = true };
@@ -61,9 +63,12 @@ public sealed class SubtitleForm : Form
         _interfaceLanguage.Items.AddRange(["简体中文", "English"]);
         controls.Controls.AddRange([_start, _stop, _configure, _historyButton, _clearButton,
             Theme.Button("A−", (_, _) => ChangeFont(-2)), Theme.Button("A+", (_, _) => ChangeFont(2)), _show, _pin, _interfaceLanguage]);
+        _lyricsButton = Theme.Button("", (_, _) => ShowLyrics());
+        _lyricsButton.Name = "showLyrics";
+        controls.Controls.Add(_lyricsButton);
         _show.Checked = settings.ShowTranslation; _pin.Checked = settings.AlwaysOnTop;
         _show.CheckedChanged += (_, _) => { _settings = _settings with { ShowTranslation = _show.Checked }; Render(); SavePreferences(); };
-        _pin.CheckedChanged += (_, _) => { TopMost = _pin.Checked; _settings = _settings with { AlwaysOnTop = _pin.Checked }; SavePreferences(); };
+        _pin.CheckedChanged += (_, _) => { TopMost = _overlay.TopMost = _pin.Checked; _settings = _settings with { AlwaysOnTop = _pin.Checked }; SavePreferences(); };
         _interfaceLanguage.SelectedIndexChanged += (_, _) =>
         {
             if (_applyingLanguage || _interfaceLanguage.SelectedIndex < 0) return;
@@ -77,25 +82,38 @@ public sealed class SubtitleForm : Form
         footer.ColumnStyles.Add(new(SizeType.Percent, 100)); footer.ColumnStyles.Add(new(SizeType.Absolute, 90));
         footer.Controls.Add(_state, 0, 0); footer.Controls.Add(_level, 1, 0);
         Controls.Add(body); Controls.Add(_saved); Controls.Add(footer); Controls.Add(controls);
-        var menu = new ContextMenuStrip();
-        _trayShow = menu.Items.Add("", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); });
-        _trayStop = menu.Items.Add("", null, async (_, _) => await StopAsync());
-        _trayExit = menu.Items.Add("", null, (_, _) => Close());
-        _tray = new NotifyIcon { Icon = SystemIcons.Application, Visible = true, ContextMenuStrip = menu };
-        _tray.DoubleClick += (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); };
-        _session.CaptionChanged += caption => Post(() => { _history.Upsert(caption); Render(); });
+        _trayShow = _menu.Items.Add("", null, (_, _) => ShowLyrics());
+        _trayShow.Name = "showLyrics";
+        _menu.Items.Add("", null, async (_, _) => await StartAsync()).Name = "start";
+        _trayStop = _menu.Items.Add("", null, async (_, _) => await StopAsync());
+        _trayStop.Name = "stop";
+        BuildLyricsMenu();
+        _trayExit = _menu.Items.Add("", null, (_, _) => Close());
+        _tray = new NotifyIcon { Icon = SystemIcons.Application, Visible = true, ContextMenuStrip = _menu };
+        _tray.DoubleClick += (_, _) => { if (CanUseMenu()) ShowLyrics(); };
+        _session.CaptionChanged += caption => Post(() =>
+        {
+            _history.Upsert(caption);
+            // Keep every transcript update in history. Paint rapid partials at the next UI tick.
+            if (caption.Final) Render(); else _partialNeedsRender = true;
+        });
         _session.TranslationChanged += update => Post(() => { _history.Translate(update); Render(); });
         _session.CaptureStarted += started => Post(() => _history.SetStartedAt(started));
         _session.StateChanged += status => Post(() =>
         {
-            _stateText = () => status; _state.Text = status; RefreshTray();
+            _stateText = () => status; _state.Text = status; _overlayStatus = _session.Active ? "" : status; RefreshTray();
             if (!_session.Active) { _history.MarkStopped(); Render(); }
             UpdateButtons();
         });
         _session.LevelChanged += value => Volatile.Write(ref _lastLevel, value);
-        _meter.Tick += (_, _) => _level.Value = Math.Clamp((int)(Volatile.Read(ref _lastLevel) * 250), 0, 100); _meter.Start();
+        _meter.Tick += (_, _) =>
+        {
+            _level.Value = Math.Clamp((int)(Volatile.Read(ref _lastLevel) * 250), 0, 100);
+            if (_partialNeedsRender) Render();
+        };
+        _meter.Start();
         FormClosing += OnClosing;
-        FormClosed += (_, _) => { _saveTimer.Dispose(); _meter.Dispose(); _tray.Visible = false; _tray.Dispose(); _translation.Dispose(); };
+        FormClosed += (_, _) => { _saveTimer.Dispose(); _meter.Dispose(); _tray.Visible = false; _tray.Dispose(); _overlay.Dispose(); _menu.Dispose(); _translation.Dispose(); };
         ApplyInterfaceLanguage(); ApplyFont(); Render();
     }
     private void ApplyInterfaceLanguage(bool resetState = false)
@@ -110,7 +128,8 @@ public sealed class SubtitleForm : Form
         _show.Text = AppText.T("显示译文", "Show translation") + " · " + TranslationLanguages.DisplayName(_settings.TargetLanguage);
         _pin.Text = AppText.T("置顶", "Always on top");
         _interfaceLanguage.AccessibleName = AppText.T("界面语言", "Interface language");
-        _trayShow.Text = AppText.T("显示字幕窗", "Show subtitles"); _trayStop.Text = AppText.T("停止转写", "Stop transcription"); _trayExit.Text = AppText.T("退出", "Exit");
+        _lyricsButton.Text = _trayShow.Text = AppText.T("桌面歌词", "Desktop lyrics"); _trayStop.Text = AppText.T("停止转写", "Stop transcription"); _trayExit.Text = AppText.T("退出", "Exit");
+        LocalizeLyricsMenu();
         if (resetState) _stateText = _session.Active
             ? () => AppText.T("正在转写 · 界面语言已更新", "Transcribing · Interface language updated")
             : () => AppText.T("已就绪 · 播放视频后点击“开始”", "Ready · Play a video, then select Start");
@@ -118,7 +137,7 @@ public sealed class SubtitleForm : Form
     }
     private void RefreshTray() => _tray.Text = AppText.T("听力字幕", "Listening Subtitles") + " · " +
         (_session.Active ? AppText.T("正在转写", "Transcribing") : AppText.T("已就绪", "Ready"));
-    private void SetState(string chinese, string english) { _stateText = () => AppText.T(chinese, english); _state.Text = _stateText(); }
+    private void SetState(string chinese, string english) { _stateText = () => AppText.T(chinese, english); _state.Text = _overlayStatus = _stateText(); RefreshLyrics(); }
     private void Post(Action action)
     {
         if (IsDisposed || _closing || !IsHandleCreated) return;
@@ -128,6 +147,7 @@ public sealed class SubtitleForm : Form
     private async Task StartAsync()
     {
         if (_busy || _session.Active) return;
+        _overlayStatus = "";
         _busy = true; UpdateButtons();
         try
         {
@@ -135,7 +155,7 @@ public sealed class SubtitleForm : Form
             if (!SaveHistory()) { SetState("上次记录保存失败，请先在历史窗口导出，再清空或开始。", "The previous recording could not be saved. Export it from History before clearing or starting."); return; }
             _history.Clear(); Render(); await _session.StartAsync(_settings, key);
         }
-        catch (Exception ex) { _stateText = () => ex.Message; _state.Text = ex.Message; }
+        catch (Exception ex) { _stateText = () => ex.Message; _state.Text = _overlayStatus = ex.Message; }
         finally { _busy = false; UpdateButtons(); }
     }
     private async Task StopAsync()
@@ -149,7 +169,7 @@ public sealed class SubtitleForm : Form
     {
         await StopAsync();
         using var form = new SettingsForm(_settings, new SecretStore(_store.DirectoryPath).HasKey);
-        if (form.ShowDialog(this) != DialogResult.OK || form.Result is not { } settings) return;
+        if (form.ShowDialog(ActiveSurface) != DialogResult.OK || form.Result is not { } settings) return;
         try
         {
             // Save the encrypted credential first; a failed save never activates new settings.
@@ -162,14 +182,14 @@ public sealed class SubtitleForm : Form
     private void UpdateButtons()
     {
         _start.Enabled = !_busy && !_session.Active; _stop.Enabled = _session.Active;
-        _configure.Enabled = !_busy;
+        _configure.Enabled = !_busy; RefreshLyrics();
     }
     private void Clear()
     {
         if (_session.Active || _busy) { SetState("请先停止，再清空记录。", "Stop transcription before clearing the recording."); return; }
-        if (!SaveHistory() && MessageBox.Show(this, AppText.T("自动保存失败。确定放弃当前未保存的记录？需要保留请取消，先在历史窗口导出。", "Automatic save failed. Discard the unsaved recording? Cancel to export it from History first."),
+        if (!SaveHistory() && MessageBox.Show(ActiveSurface, AppText.T("自动保存失败。确定放弃当前未保存的记录？需要保留请取消，先在历史窗口导出。", "Automatic save failed. Discard the unsaved recording? Cancel to export it from History first."),
             AppText.T("清空未保存记录", "Discard unsaved recording"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
-        if (_history.Entries.Count > 0 && MessageBox.Show(this, AppText.T("清空当前页面？已保存的记录仍可在“历史”上方选择回看。", "Clear this page? Saved recordings remain available in History."),
+        if (_history.Entries.Count > 0 && MessageBox.Show(ActiveSurface, AppText.T("清空当前页面？已保存的记录仍可在“历史”上方选择回看。", "Clear this page? Saved recordings remain available in History."),
             AppText.T("清空页面", "Clear page"), MessageBoxButtons.OKCancel) != DialogResult.OK) return;
         _history.Clear(); Render();
     }
@@ -187,7 +207,7 @@ public sealed class SubtitleForm : Form
         catch
         {
             _savedText = () => AppText.T("历史保存失败 · 请打开“历史”导出到其他文件夹，退出前先保留记录", "History save failed · Export from History to another folder before exiting");
-            _saved.Text = _savedText(); return false;
+            _saved.Text = _overlayStatus = _savedText(); RefreshLyrics(); return false;
         }
     }
     private void OpenHistory()
@@ -199,11 +219,11 @@ public sealed class SubtitleForm : Form
             var key = Credentials.Read(_store.DirectoryPath); var model = _settings.TranslationModel;
             return (text, sourceLanguages, token) => _translation.TranslateAsync(key, model, text, sourceLanguages, targetLanguage, token);
         }, targetLanguage);
-        history.ShowDialog(this); Render();
+        history.ShowDialog(ActiveSurface); Render();
     }
     private void ChangeFont(int delta)
     {
-        _settings = _settings with { FontSize = Math.Clamp(_settings.FontSize + delta, 12, 36) }; ApplyFont(); SavePreferences();
+        _settings = _settings with { FontSize = Math.Clamp(_settings.FontSize + delta, 12, 36) }; ApplyFont(); RefreshLyrics(); SavePreferences();
     }
     private void ApplyFont()
     {
@@ -221,6 +241,7 @@ public sealed class SubtitleForm : Form
     }
     private void Render()
     {
+        _partialNeedsRender = false;
         var latest = _history.Latest;
         var caption = _history.Entries.LastOrDefault(c => c.Final) ?? latest;
         _original.Text = caption?.Original ?? "听见原文，再看懂意思。\nHear the original. Understand the meaning.";
@@ -238,12 +259,13 @@ public sealed class SubtitleForm : Form
             "cancelled" => AppText.T("本段翻译已停止，原文保留在历史中。", "Translation stopped. The original is preserved in History."),
             _ => caption.Final ? (_settings.AutoTranslate ? "" : AppText.T("自动翻译已关闭", "Automatic translation is off")) : AppText.T("正在识别…", "Recognizing speech…")
         };
+        RefreshLyrics(caption, latest);
     }
     private async void OnClosing(object? sender, FormClosingEventArgs e)
     {
         if (_exitReady) return;
         e.Cancel = true; if (_closing) return;
-        if (!SaveHistory() && MessageBox.Show(this, AppText.T("本机历史保存失败。确定退出并放弃尚未保存的内容？需要保留请取消，先在“历史”导出。", "Local history could not be saved. Exit and discard unsaved content? Cancel to export it from History first."),
+        if (!SaveHistory() && MessageBox.Show(ActiveSurface, AppText.T("本机历史保存失败。确定退出并放弃尚未保存的内容？需要保留请取消，先在“历史”导出。", "Local history could not be saved. Exit and discard unsaved content? Cancel to export it from History first."),
             AppText.T("记录未保存", "Unsaved recording"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
         _closing = true; Enabled = false;
         try { await _session.DisposeAsync(); _history.MarkStopped(); SaveHistory(); }

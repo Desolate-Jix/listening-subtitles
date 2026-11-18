@@ -1,19 +1,21 @@
 # Listening Subtitles · 听力字幕
 
-A Windows desktop app dedicated to **speech recognition, live subtitle transcription and caption export**. Transcribe speech playing through your computer, show the original text in a floating window, optionally translate it into your chosen target language, and export SRT, WebVTT (CC) or TXT. Use it for videos without captions, recorded lessons, podcasts and listening practice. The interface supports Simplified Chinese and English; spoken language and translation target are configured separately. The default is English speech → Simplified Chinese translation.
+A Windows desktop app dedicated to **speech recognition, live subtitle transcription and caption export**. Transcribe speech playing through your computer, display centered, outlined original and translated text in a transparent desktop-lyrics overlay, and export SRT, WebVTT (CC) or TXT. Use it for videos without captions, recorded lessons, podcasts and listening practice. The interface supports Simplified Chinese and English; spoken language and translation target are configured separately. The default is English speech → Simplified Chinese translation.
 
-**专门用于语音识别、实时字幕转录和字幕文件导出的 Windows 桌面工具。** 识别电脑播放的语音，可翻译成所选目标语言，支持中英文界面及 SRT / VTT / TXT 导出。
+**专门用于语音识别、实时字幕转录和字幕文件导出的 Windows 桌面工具。** 默认以透明桌面歌词显示居中描边的原文和译文，支持中英文界面及 SRT / VTT / TXT 导出。
 
 [中文说明 / Bilingual introduction](README.md) · [Download for Windows](https://github.com/Desolate-Jix/listening-subtitles/releases/latest) · [Source](https://github.com/Desolate-Jix/listening-subtitles) · [MIT License](LICENSE)
 
 ## Start
 
 1. Download and fully extract the Windows x64 ZIP. Run `ListeningSubtitles.exe`.
-2. Open Settings and enter your own OpenAI API key. Credentials are encrypted locally with Windows DPAPI. No other app or ChatGPT browser session is required.
-3. Choose Simplified Chinese or English for the interface; Simplified Chinese is the default. This does not change the spoken source language or translation target. The initial welcome explains the app in both languages.
+2. The app opens in the transparent desktop-lyrics view. Open Settings from the “…” menu and enter your own OpenAI API key. Credentials are encrypted locally with Windows DPAPI. No other app or ChatGPT browser session is required.
+3. Choose Simplified Chinese or English for the interface; Simplified Chinese is the default. This does not change the spoken source language or translation target.
 4. Configure the source language and translation target. The default is English (`en`) → Simplified Chinese (`zh-Hans`).
 5. Play your video/audio, then press Start. Stop ends capture and pending network work. Opening the app alone never starts capture or contacts the API.
-6. Open History to review, fill translations for the current target, or export captions. Select earlier recordings from the list. Starting a new recording saves the current one first.
+6. Open History from the “…” menu or tray to review, fill translations for the current target, or export captions. Select earlier recordings from the list. Starting a new recording saves the current one first.
+
+The desktop-lyrics view keeps small Start/Stop controls and a “…” menu. Drag the text or handle to move it. The menu and tray provide settings, history, font size, translation visibility and always-on-top options. Select “Full control window”, then use its “Desktop lyrics” button to return. Long text is shortened in the overlay; view it in full in History. Text is displayed by segment, without word-by-word timing or karaoke highlighting. Opening or switching views never starts capture automatically.
 
 The app captures **system output audio only**, not the microphone. Other apps playing through the selected output device are included. It follows the Windows default headphones/speakers unless you select a fixed playback device. Play existing audio/video files in a media player to transcribe them; there is no batch file-import interface. Windows 10/11 x64 is required.
 

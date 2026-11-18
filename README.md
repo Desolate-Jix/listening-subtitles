@@ -2,17 +2,17 @@
 
 **专门用于语音识别、实时字幕转录和字幕文件导出的 Windows 桌面工具。**
 
-识别电脑正在播放的语音，在浮动窗口显示原文，并可翻译成你选择的目标语言，导出 SRT / WebVTT（CC）或 TXT。适合没有字幕的视频、录播课程、播客和听力练习。界面支持简体中文和 English；识别语言与翻译目标分别设置，默认英语 → 简体中文。
+识别电脑正在播放的语音，默认以透明桌面歌词样式显示居中描边的原文和译文，并可导出 SRT / WebVTT（CC）或 TXT。适合没有字幕的视频、录播课程、播客和听力练习。界面支持简体中文和 English；识别语言与翻译目标分别设置，默认英语 → 简体中文。
 
 **A Windows desktop app dedicated to speech recognition, live subtitle transcription and caption export.**
 
-Transcribe speech playing through your computer, show the original text in a floating window, optionally translate it into your chosen target language, and export SRT, WebVTT (CC) or TXT. Use it for videos without captions, recorded lessons, podcasts and listening practice. The interface supports Simplified Chinese and English. Interface language, spoken language and translation target are separate settings; the default is English speech → Simplified Chinese translation.
+Transcribe speech playing through your computer, display centered, outlined original and translated text in a transparent desktop-lyrics overlay, and export SRT, WebVTT (CC) or TXT. Use it for videos without captions, recorded lessons, podcasts and listening practice. The interface supports Simplified Chinese and English. Interface language, spoken language and translation target are separate settings; the default is English speech → Simplified Chinese translation.
 
 [English guide / 完整英文说明](README.en.md) · [下载 / Download for Windows](https://github.com/Desolate-Jix/listening-subtitles/releases/latest) · [源码 / Source](https://github.com/Desolate-Jix/listening-subtitles) · [MIT License](LICENSE)
 
 ## 功能
 
-- Windows 10/11 x64；中英文界面，可置顶、调节字号、显示或隐藏译文。首次打开的欢迎介绍也同时提供中英文。
+- Windows 10/11 x64；默认透明桌面歌词，可拖动位置，随时切换完整控制窗口。中英文界面，可置顶、调节字号、显示或隐藏译文。
 - 使用共享模式 WASAPI loopback 采集电脑输出声音，自动跟随默认耳机/扬声器切换，也可固定设备。
 - OpenAI Realtime API 语音识别；可自动将完整语段交给 Responses API，翻译成所选目标语言。
 - 识别语言可自动判断，也可指定单个语言代码或逗号分隔的混合语言；翻译目标支持简繁中文、英语、日语、韩语等常用语言。
@@ -27,12 +27,14 @@ Transcribe speech playing through your computer, show the original text in a flo
 ## 快速使用
 
 1. 下载发行版 ZIP，完整解压到自己的文件夹，运行 `ListeningSubtitles.exe`。不要只复制 EXE。
-2. 打开“设置”，填写你自己的 **OpenAI API Key**。不需要其他应用或 ChatGPT 网页会话。
+2. 默认进入透明桌面歌词界面。点击“…”菜单打开“设置”，填写你自己的 **OpenAI API Key**。不需要其他应用或 ChatGPT 网页会话。
 3. 按需要选择简体中文或 English 界面，默认简体中文。界面语言不决定识别什么语音，也不决定翻译成什么语言。
 4. 设置语音识别的源语言：默认 `en`（英语），混合语言可填 `zh,en`，留空由模型自动识别。默认识别模型为 `gpt-live-transcribe`，模型可用性取决于你的 API 账户。
 5. 选择翻译目标语言，默认简体中文；自动翻译默认打开，默认翻译模型为 `gpt-6-luna`，可在设置中修改。“显示译文”只控制浮动窗的显示，关闭它仍会翻译；要停止翻译请求，请关闭自动翻译。
 6. 播放视频，点击“开始”。启动应用本身不采集、不连接 API。点击“停止”结束采集和当前网络工作。
-7. 点“历史”回看、按当前目标语言补译、保存或导出。上方列表可以选择过去的记录。新一次“开始”会保存当前记录，然后创建新记录。
+7. 从“…”菜单或托盘打开“历史”，回看、按当前目标语言补译、保存或导出。上方列表可以选择过去的记录。新一次“开始”会保存当前记录，然后创建新记录。
+
+桌面歌词只保留小型“开始 / 停止”控件和“…”菜单。拖动文字或拖动把手可移动位置；菜单和托盘提供设置、历史、字号、译文显示及置顶选项。选择“完整控制窗口”后，可点“桌面歌词”返回。过长内容在浮层中省略，全文可到历史查看。歌词样式按语段显示，暂不提供逐字计时或卡拉 OK 式高亮；启动和切换界面都不会自动开始采集。
 
 可选目标语言：简体中文 `zh-Hans`、繁体中文 `zh-Hant`、英语 `en`、日语 `ja`、韩语 `ko`、法语 `fr`、德语 `de`、西班牙语 `es`、葡萄牙语 `pt`、俄语 `ru`、阿拉伯语 `ar`、印地语 `hi`、意大利语 `it`。例如，源语言 `ja`、目标 `en` 表示日语语音 → 英文字幕；源语言留空、目标 `zh-Hant` 表示自动识别语音 → 繁体中文字幕。识别和翻译效果取决于输入内容与所选模型，不保证所有语言都有相同效果。
 
