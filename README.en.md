@@ -6,6 +6,16 @@ A Windows desktop app dedicated to **speech recognition, live subtitle transcrip
 
 [中文说明 / Bilingual introduction](README.md) · [Download for Windows](https://github.com/Desolate-Jix/listening-subtitles/releases/latest) · [Source](https://github.com/Desolate-Jix/listening-subtitles) · [MIT License](LICENSE)
 
+## Live transcription of an ABC News clip
+
+The first English word arrived **1.12 seconds** into this 6.56-second excerpt from an ABC News report on the Artemis II lunar flyby. Open the broadcast at **00:35** to hear the speaker. The animation replays the captions at the times the app received them. [Listen to the ABC News source (00:35.22–00:41.78)](https://abcnews.com/video/131741110/)
+
+![ABC broadcast captions above the live English transcript, replayed with the measured timing.](https://raw.githubusercontent.com/Desolate-Jix/listening-subtitles/main/docs/demo/abc-news-live.gif)
+
+Across two sentences, the app picked up **all 21 words in the ABC captions, in order**, including *Orion’s windows*. It repeated *space* at the segment boundary, as the replay shows. The last segment became final **1.13 seconds after the excerpt ended**. [Inspect the measured times and final transcript](https://github.com/Desolate-Jix/listening-subtitles/blob/main/docs/demo/abc-news-timing.json)
+
+This run used v1.6.0’s default `gpt-live-transcribe` model. The original audio was sent at playback speed over an established connection, with the timer starting at the beginning of the excerpt. These timings cover English transcription for this sample. With automatic translation enabled, a translation follows each finalized segment.
+
 ## Start
 
 1. Download and fully extract the Windows x64 ZIP. Run `ListeningSubtitles.exe`.

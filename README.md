@@ -10,6 +10,16 @@ Transcribe speech playing through your computer, display centered, outlined orig
 
 [English guide / 完整英文说明](README.en.md) · [下载 / Download for Windows](https://github.com/Desolate-Jix/listening-subtitles/releases/latest) · [源码 / Source](https://github.com/Desolate-Jix/listening-subtitles) · [MIT License](LICENSE)
 
+## ABC News 新闻转写实测
+
+播放到 **1.12 秒**，听力字幕收到了第一个英文词。下面这段 6.56 秒的真人播报来自 ABC News 的绕月飞行报道。打开原视频跳到 **00:35**，就能一边听，一边对照动图里的英文字幕。[听 ABC News 原声（00:35.22–00:41.78）](https://abcnews.com/video/131741110/)
+
+![ABC News 真人播报的字幕回放。上方为节目英文字幕，下方按实测时间显示 Live 返回的英文。](https://raw.githubusercontent.com/Desolate-Jix/listening-subtitles/main/docs/demo/abc-news-live.gif)
+
+两句对照 ABC 英文字幕，**原稿 21 个词全部按顺序识别出来**，包括 *Orion’s windows*。两段衔接时多出了一个 *space*，动图保留了这个重复词。选段结束 **1.13 秒**后收到最后一段定稿。[查看计时和转写原文](https://github.com/Desolate-Jix/listening-subtitles/blob/main/docs/demo/abc-news-timing.json)
+
+这次用 v1.6.0 的默认识别模型 `gpt-live-transcribe`，在连接就绪后按原速送入原声，从选段开始计时。数字只描述这两句的英文转写。日常使用时，自动翻译会在每段英文定稿后另行返回。
+
 ## 功能
 
 - Windows 10/11 x64；默认透明桌面歌词，可拖动位置，随时切换完整控制窗口。中英文界面，可置顶、调节字号、显示或隐藏译文。

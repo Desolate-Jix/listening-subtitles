@@ -1,0 +1,34 @@
+{
+  "app_version": "1.6.0",
+  "model": "gpt-live-transcribe",
+  "language": "en",
+  "source_url": "https://abcnews.com/video/131741110/",
+  "source_excerpt_seconds": [
+    35.22,
+    41.78
+  ],
+  "audio_duration_seconds": 6.56,
+  "input": "Original broadcast audio in real time, mono PCM16 at 24 kHz in 50 ms blocks. Appended 1.15 s of silence for end-of-speech detection.",
+  "time_origin": "Seconds from the start of excerpt playback after the API connection was ready, measured when the app transcriber emitted the text.",
+  "first_nonempty_text_seconds": 1.1163,
+  "last_final_seconds": 7.6871,
+  "excerpt_end_to_last_final_seconds": 1.1271,
+  "final_segments": [
+    {
+      "segment": 1,
+      "seconds": 5.7467,
+      "text": "So, these are looking back on Earth from one of Orion's windows from deep in space."
+    },
+    {
+      "segment": 2,
+      "seconds": 7.6871,
+      "text": "Space, look at that right there."
+    }
+  ],
+  "reference_words": 21,
+  "substitutions": 0,
+  "deletions": 0,
+  "insertions": 1,
+  "inserted_word": "space",
+  "comparison": "Case-insensitive words with punctuation ignored and contractions kept as single words. All 21 reference words appear in order."
+}
