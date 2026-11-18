@@ -242,8 +242,9 @@ public sealed partial class SubtitleForm : Form
     private void Render()
     {
         _partialNeedsRender = false;
-        var latest = _history.Latest;
-        var caption = _history.Entries.LastOrDefault(c => c.Final) ?? latest;
+        var rows = _history.Entries;
+        var latest = rows.LastOrDefault();
+        var caption = CurrentCaption(rows, latest);
         _original.Text = caption?.Original ?? "听见原文，再看懂意思。\nHear the original. Understand the meaning.";
         _live.Text = latest is not null && latest != caption ? AppText.T("正在听：", "Listening: ") + latest.Original : "";
         if (!_show.Checked) _translated.Text = AppText.T("译文已隐藏 · 勾选“显示译文”查看", "Translation hidden · Select Show translation to display it");
@@ -259,7 +260,7 @@ public sealed partial class SubtitleForm : Form
             "cancelled" => AppText.T("本段翻译已停止，原文保留在历史中。", "Translation stopped. The original is preserved in History."),
             _ => caption.Final ? (_settings.AutoTranslate ? "" : AppText.T("自动翻译已关闭", "Automatic translation is off")) : AppText.T("正在识别…", "Recognizing speech…")
         };
-        RefreshLyrics(caption, latest);
+        RefreshLyrics(rows, caption, latest);
     }
     private async void OnClosing(object? sender, FormClosingEventArgs e)
     {

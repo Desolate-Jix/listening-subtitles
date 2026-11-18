@@ -99,7 +99,7 @@ internal static class LyricOverlayTests
             "startup, preview or view switching attempted an audio/API session");
     }
 
-    private static void AssertReservedControls(Bitmap frame, Rectangle handle, Rectangle menu)
+    internal static void AssertReservedControls(Bitmap frame, Rectangle handle, Rectangle menu)
     {
         var controls = Rectangle.Inflate(Rectangle.Union(handle, menu), 3, 3);
         for (int y = Math.Max(0, controls.Top); y < frame.Height; y++)
@@ -108,7 +108,7 @@ internal static class LyricOverlayTests
                     Check(frame.GetPixel(x, y).A <= 8, "subtitle/live/status text overlaps the bottom control row");
     }
 
-    private static void AssertAlpha(Bitmap frame, string scenario)
+    internal static void AssertAlpha(Bitmap frame, string scenario)
     {
         Check(Image.IsAlphaPixelFormat(frame.PixelFormat), scenario + " returned an opaque bitmap format");
         int transparent = 0, opaque = 0, partial = 0, bright = 0;
@@ -150,7 +150,7 @@ internal static class LyricOverlayTests
         }
     }
 
-    private static void AssertCompositing(Bitmap frame, string? destination, string prefix = "lyrics")
+    internal static void AssertCompositing(Bitmap frame, string? destination, string prefix = "lyrics")
     {
         using var lightBackground = Background(frame.Size, true);
         using var darkBackground = Background(frame.Size, false);

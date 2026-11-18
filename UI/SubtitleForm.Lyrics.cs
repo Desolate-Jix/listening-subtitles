@@ -103,10 +103,33 @@ public sealed partial class SubtitleForm
         if (!_overlay.Visible) return true;
         var rows = _history.Entries;
         var latest = rows.LastOrDefault();
-        return RefreshLyrics(rows.LastOrDefault(c => c.Final) ?? latest, latest);
+        return RefreshLyrics(rows, CurrentCaption(rows, latest), latest);
     }
 
-    private bool RefreshLyrics(Caption? caption, Caption? latest)
+    private static Caption? CurrentCaption(IReadOnlyList<Caption> rows, Caption? latest) =>
+        latest is { Final: false } ? rows.LastOrDefault(c => c.Session == latest.Session && c.Final) ?? latest : latest;
+
+    private string PreviousLyric(IReadOnlyList<Caption> rows, Caption? current)
+    {
+        if (current is null) return "";
+        Caption? previous = null;
+        // Walk in speech order. A slow response for an older sentence must not displace a newer translation.
+        for (int i = rows.Count - 1; i >= 0; i--)
+        {
+            var row = rows[i];
+            if (row.Session < current.Session) break;
+            if (row.Session != current.Session || row.Sequence >= current.Sequence || !row.Final) continue;
+            previous ??= row;
+            if (!_show.Checked) break;
+            if (string.IsNullOrWhiteSpace(row.Translation) ||
+                !string.Equals(row.TranslationLanguage, _settings.TargetLanguage, StringComparison.OrdinalIgnoreCase)) continue;
+            var label = row.Id == previous.Id ? AppText.T("上句译文", "Previous translation") : AppText.T("前文译文", "Earlier translation");
+            return label + " · " + row.Translation;
+        }
+        return previous is null ? "" : AppText.T("上句", "Previous") + " · " + previous.Original;
+    }
+
+    private bool RefreshLyrics(IReadOnlyList<Caption> rows, Caption? caption, Caption? latest)
     {
         if (!_overlay.Visible || _closing) return true;
         var original = caption?.Original ?? (_session.Active ? AppText.T("正在聆听…", "Listening…") : "听力字幕");
@@ -123,7 +146,7 @@ public sealed partial class SubtitleForm
             status = _translated.Text;
         try
         {
-            _overlay.SetContent(original, translation, live, status, _session.Active, _busy, _settings.FontSize);
+            _overlay.SetContent(original, translation, live, status, _session.Active, _busy, _settings.FontSize, previous: PreviousLyric(rows, caption));
             return true;
         }
         catch (Win32Exception) { HandleOverlayFailure(); return false; }

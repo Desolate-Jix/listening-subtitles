@@ -20,6 +20,7 @@ internal static class Program
         try
         {
             LyricOverlayTests.Ui(args.FirstOrDefault()); passed++; Console.WriteLine("PASS default transparent lyrics, control panel switching and native alpha rendering");
+            LyricContextTests.Ui(args.FirstOrDefault()); passed++; Console.WriteLine("PASS previous subtitle context, delayed translations and separate compact row");
             Ui(args.FirstOrDefault()); passed++; Console.WriteLine("PASS settings/history render and safe defaults");
             HistoryTests.Ui(); passed++; Console.WriteLine("PASS history recovery, live refresh and explicit Chinese retry");
             LanguageTests.Ui(); passed++; Console.WriteLine("PASS bilingual interface, independent language choices and save/cancel");

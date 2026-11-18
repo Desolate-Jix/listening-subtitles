@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.4.0</Version>
+    <Version>1.4.1</Version>
     <Description>Bilingual Windows speech recognition, multilingual subtitle translation and SRT/WebVTT export</Description>
     <RepositoryUrl>https://github.com/Desolate-Jix/listening-subtitles</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

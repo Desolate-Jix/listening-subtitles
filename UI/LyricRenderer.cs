@@ -12,8 +12,9 @@ internal static class LyricRenderer
     internal sealed record Frame(Bitmap Image, Rectangle Toggle, Rectangle Menu, Rectangle Handle);
 
     internal static Frame Render(Size size, float scale, string original, string translation, string live,
-        string status, bool active, bool busy, int fontSize, bool toggleHot = false, bool menuHot = false)
+        string status, bool active, bool busy, int fontSize, bool toggleHot = false, bool menuHot = false, string previous = "")
     {
+        previous = (previous ?? "").Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Replace('\u2028', ' ').Replace('\u2029', ' ');
         var bitmap = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppPArgb);
         using var graphics = Graphics.FromImage(bitmap);
         graphics.Clear(Color.Transparent);
@@ -36,33 +37,48 @@ internal static class LyricRenderer
         var textTop = 6 * scale;
         var textBottom = Math.Max(textTop, pillY - 10 * scale);
         var availableHeight = textBottom - textTop;
-        var statusHeight = availableHeight >= 70 * scale ? TextHeight(graphics, status, statusFont, contentWidth, 1) : 0;
+        var hasPrevious = !string.IsNullOrWhiteSpace(previous);
+        var reserveTranslation = hasPrevious && !string.IsNullOrWhiteSpace(original) && string.IsNullOrWhiteSpace(status);
+        var statusHeight = TextHeight(graphics, status, statusFont, contentWidth, 1);
         var lines = 2;
         var factor = 1f;
         // A small working area must never push words into the controls. Prefer a single
-        // elided line for each language, then reduce size only as much as the height needs.
-        for (var attempt = 0; attempt < 16; attempt++)
+        // elided line for each language, then fit the three intentional lyric rows.
+        // A transient/error status joins this budget so a compact layout can retain it.
+        // A live preview only uses the space left after these intentional rows.
+        for (var attempt = 0; attempt < 20; attempt++)
         {
             using var probeMain = FitFont(graphics, main, originalPixels * factor, contentWidth, lines, FontStyle.Bold);
             using var probeSecondary = FitFont(graphics, translation, secondaryPixels * factor, contentWidth, lines, FontStyle.Regular);
-            var heights = new[] { TextHeight(graphics, main, probeMain, contentWidth, lines), TextHeight(graphics, translation, probeSecondary, contentWidth, lines), statusHeight };
+            using var probePrevious = FontAt(Math.Clamp(originalPixels * factor * .66f, 14 * scale, 22 * scale), FontStyle.Regular);
+            var heights = new[]
+            {
+                hasPrevious ? TextHeight(graphics, previous, probePrevious, contentWidth, 1) : 0,
+                TextHeight(graphics, main, probeMain, contentWidth, lines),
+                TranslationHeight(graphics, translation, probeSecondary, contentWidth, lines, reserveTranslation),
+                statusHeight
+            };
             var count = heights.Count(height => height > 0);
             if (heights.Sum() + Math.Max(0, count - 1) * gap <= availableHeight) break;
             if (lines == 2) { lines = 1; continue; }
-            if (originalPixels * factor <= 14 * scale) { statusHeight = 0; break; }
             factor *= .9f;
         }
         using var mainFont = FitFont(graphics, main, originalPixels * factor, contentWidth, lines, FontStyle.Bold);
         using var secondaryFont = FitFont(graphics, translation, secondaryPixels * factor, contentWidth, lines, FontStyle.Regular);
+        using var previousFont = FontAt(Math.Clamp(originalPixels * factor * .66f, 14 * scale, 22 * scale), FontStyle.Regular);
         var mainHeight = TextHeight(graphics, main, mainFont, contentWidth, lines);
-        var secondaryHeight = TextHeight(graphics, translation, secondaryFont, contentWidth, lines);
+        var secondaryHeight = TranslationHeight(graphics, translation, secondaryFont, contentWidth, lines, reserveTranslation);
         // A partial is a quiet preview; a completed sentence remains the primary lyric.
         var preview = !string.IsNullOrWhiteSpace(live) && !string.Equals(live.Trim(), original.Trim(), StringComparison.Ordinal) ? live : "";
         var previewHeight = TextHeight(graphics, preview, liveFont, contentWidth, 1);
         var rows = new List<(string Text, Font Font, int Height, Color Color, int Lines, bool Soft)>();
+        if (hasPrevious) rows.Add((previous, previousFont, TextHeight(graphics, previous, previousFont, contentWidth, 1), Color.FromArgb(192, 207, 229), 1, true));
         if (mainHeight > 0) rows.Add((main, mainFont, mainHeight, hasText ? Color.White : Color.FromArgb(223, 230, 237), lines, false));
         if (secondaryHeight > 0) rows.Add((translation, secondaryFont, secondaryHeight, Color.FromArgb(185, 229, 229), lines, false));
-        var required = rows.Sum(row => row.Height) + statusHeight + Math.Max(0, rows.Count + (statusHeight > 0 ? 1 : 0) - 1) * gap;
+        var required = rows.Sum(row => row.Height) + Math.Max(0, rows.Count - 1) * gap;
+        if (statusHeight > 0 && required + statusHeight + (rows.Count > 0 ? gap : 0) <= availableHeight)
+            required += statusHeight + (rows.Count > 0 ? gap : 0);
+        else statusHeight = 0;
         if (previewHeight > 0 && required + previewHeight + (rows.Count > 0 || statusHeight > 0 ? gap : 0) <= availableHeight)
             rows.Add((preview, liveFont, previewHeight, Color.FromArgb(197, 207, 220), 1, true));
         if (statusHeight > 0) rows.Add((status, statusFont, statusHeight, Color.FromArgb(255, 209, 153), 1, true));
@@ -152,6 +168,13 @@ internal static class LyricRenderer
         using var format = TextFormat();
         var height = graphics.MeasureString(text, font, new SizeF(width, 10000), format).Height;
         return (int)Math.Ceiling(Math.Min(height, font.GetHeight(graphics) * lines) + 2);
+    }
+
+    private static int TranslationHeight(Graphics graphics, string text, Font font, float width, int lines, bool reserve)
+    {
+        var height = TextHeight(graphics, text, font, width, lines);
+        // Keep the current sentence in place while its first translated line is pending.
+        return reserve ? Math.Max(height, (int)Math.Ceiling(font.GetHeight(graphics)) + 2) : height;
     }
 
     private static StringFormat TextFormat() => new(StringFormat.GenericDefault)

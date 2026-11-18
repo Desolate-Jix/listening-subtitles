@@ -8,7 +8,7 @@ namespace ListeningSubtitles.UI;
 /// <summary>A real alpha-composited desktop lyric window; no transparency color key.</summary>
 internal sealed class LyricOverlay : Form
 {
-    private string _original = "", _translation = "", _live = "", _status = "";
+    private string _original = "", _translation = "", _live = "", _status = "", _previous = "";
     private string _language = "";
     private bool _active, _busy, _ready, _dragging, _pressedToggle, _pressedMenu;
     private bool _toggleHot, _menuHot, _refreshing;
@@ -49,17 +49,17 @@ internal sealed class LyricOverlay : Form
         get { var parameters = base.CreateParams; parameters.ExStyle |= 0x00080000; return parameters; } // WS_EX_LAYERED
     }
 
-    internal void SetContent(string original, string translation, string live, string status, bool active, bool busy, int fontSize)
+    internal void SetContent(string original, string translation, string live, string status, bool active, bool busy, int fontSize, string previous = "")
     {
         if (IsDisposed) return;
         if (InvokeRequired) throw new InvalidOperationException("Update lyrics on the UI thread.");
-        original ??= ""; translation ??= ""; live ??= ""; status ??= "";
+        original ??= ""; translation ??= ""; live ??= ""; status ??= ""; previous ??= "";
         fontSize = Math.Clamp(fontSize, 12, 36);
         var languageChanged = _language != AppText.Language;
-        if (!languageChanged && _original == original && _translation == translation && _live == live && _status == status &&
+        if (!languageChanged && _original == original && _translation == translation && _live == live && _status == status && _previous == previous &&
             _active == active && _busy == busy && _fontSize == fontSize) return;
         var resize = _fontSize != fontSize;
-        _original = original; _translation = translation; _live = live; _status = status;
+        _original = original; _translation = translation; _live = live; _status = status; _previous = previous;
         _active = active; _busy = busy; _fontSize = fontSize; _language = AppText.Language;
         Text = AppText.T("听力字幕 · 桌面歌词", "Listening Subtitles · Desktop lyrics");
         AccessibleName = Text;
@@ -114,7 +114,7 @@ internal sealed class LyricOverlay : Form
         var area = initial ? Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720) : Screen.FromRectangle(Bounds).WorkingArea;
         var width = Math.Min((int)Math.Ceiling(1120 * _scale), Math.Max(240, area.Width - (int)Math.Ceiling(40 * _scale)));
         var pixels = Math.Clamp(_fontSize * 1.55f, 20, 56);
-        var height = Math.Min((int)Math.Ceiling((pixels * 4.8f + 138) * _scale), Math.Max(160, area.Height - (int)(24 * _scale)));
+        var height = Math.Min((int)Math.Ceiling((pixels * 4.8f + 170) * _scale), Math.Max(160, area.Height - (int)(24 * _scale)));
         _refreshing = true;
         try
         {
@@ -135,7 +135,7 @@ internal sealed class LyricOverlay : Form
         _refreshing = true;
         try
         {
-            var rendered = LyricRenderer.Render(ClientSize, _scale, _original, _translation, _live, _status, _active, _busy, _fontSize, _toggleHot, _menuHot);
+            var rendered = LyricRenderer.Render(ClientSize, _scale, _original, _translation, _live, _status, _active, _busy, _fontSize, _toggleHot, _menuHot, _previous);
             var old = _frame;
             _frame = rendered.Image;
             _toggleBounds = rendered.Toggle; _menuBounds = rendered.Menu; _handleBounds = rendered.Handle;

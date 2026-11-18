@@ -15,6 +15,8 @@ A Windows desktop app dedicated to **speech recognition, live subtitle transcrip
 5. Play your video/audio, then press Start. Stop ends capture and pending network work. Opening the app alone never starts capture or contacts the API.
 6. Open History from the “…” menu or tray to review, fill translations for the current target, or export captions. Select earlier recordings from the list. Starting a new recording saves the current one first.
 
+A line above the current subtitle shows the previous sentence’s translation when it is ready. If translation falls several sentences behind, the most recent earlier sentence with a translation stays in view. When translations are hidden or none are available yet, the line shows the previous original.
+
 The desktop-lyrics view keeps small Start/Stop controls and a “…” menu. Drag the text or handle to move it. The menu and tray provide settings, history, font size, translation visibility and always-on-top options. Select “Full control window”, then use its “Desktop lyrics” button to return. Long text is shortened in the overlay; view it in full in History. Text is displayed by segment, without word-by-word timing or karaoke highlighting. Opening or switching views never starts capture automatically.
 
 The app captures **system output audio only**, not the microphone. Other apps playing through the selected output device are included. It follows the Windows default headphones/speakers unless you select a fixed playback device. Play existing audio/video files in a media player to transcribe them; there is no batch file-import interface. Windows 10/11 x64 is required.
