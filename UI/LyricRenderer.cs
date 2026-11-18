@@ -6,13 +6,28 @@ using ListeningSubtitles.Core;
 
 namespace ListeningSubtitles.UI;
 
+internal enum LyricAction { None, Toggle, Smaller, Larger, Lock, Menu }
+
 /// <summary>Produces the premultiplied-alpha surface used both on screen and by the offline preview.</summary>
 internal static class LyricRenderer
 {
-    internal sealed record Frame(Bitmap Image, Rectangle Toggle, Rectangle Menu, Rectangle Handle);
+    internal sealed class Frame(Bitmap image, Rectangle toolbar, Rectangle hoverArea, Rectangle[] actions, bool toolbarVisible)
+    {
+        internal Bitmap Image { get; } = image;
+        internal Rectangle Toolbar { get; } = toolbar;
+        internal Rectangle HoverArea { get; } = hoverArea;
+        internal Rectangle BoundsFor(LyricAction action) => (int)action > 0 && (int)action < actions.Length ? actions[(int)action] : Rectangle.Empty;
+        internal LyricAction HitTest(Point point)
+        {
+            if (toolbarVisible)
+                for (var index = 1; index < actions.Length; index++)
+                    if (actions[index].Contains(point)) return (LyricAction)index;
+            return LyricAction.None;
+        }
+    }
 
     internal static Frame Render(Size size, float scale, string original, string translation, string live,
-        string status, bool active, bool busy, int fontSize, bool toggleHot = false, bool menuHot = false, string previous = "")
+        string status, bool active, bool busy, int fontSize, string previous = "", bool toolbarVisible = false, LyricAction hot = LyricAction.None)
     {
         previous = (previous ?? "").Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Replace('\u2028', ' ').Replace('\u2029', ' ');
         var bitmap = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppPArgb);
@@ -25,8 +40,15 @@ internal static class LyricRenderer
         var contentWidth = Math.Max(40, size.Width - margin * 2);
         var originalPixels = Math.Clamp(fontSize * 1.55f, 20, 56) * scale;
         var secondaryPixels = originalPixels * .83f;
-        var pillHeight = (int)Math.Ceiling(38 * scale);
-        var pillY = size.Height - pillHeight - (int)Math.Ceiling(9 * scale);
+        using var chromeFont = FontAt(13 * scale, FontStyle.Regular);
+        var toggleLabel = busy ? AppText.T("请稍候", "Please wait") : active ? AppText.T("停止", "Stop") : AppText.T("开始", "Start");
+        var buttonSide = Math.Max(1, (int)Math.Ceiling(34 * scale));
+        var toggleWidth = (int)Math.Ceiling(graphics.MeasureString(toggleLabel, chromeFont).Width + 38 * scale);
+        var maxToolbarWidth = Math.Max(1, size.Width - (int)Math.Ceiling(16 * scale));
+        var showToggleLabel = toggleWidth + buttonSide * 4 <= maxToolbarWidth;
+        var cellWidth = Math.Min(buttonSide, Math.Max(1, maxToolbarWidth / 5));
+        var toolbarWidth = showToggleLabel ? toggleWidth + buttonSide * 4 : cellWidth * 5;
+        var toolbarHeight = buttonSide;
         var hasText = !string.IsNullOrWhiteSpace(original) || !string.IsNullOrWhiteSpace(translation);
         var main = string.IsNullOrWhiteSpace(original)
             ? (hasText || !string.IsNullOrWhiteSpace(live) ? "" : AppText.T("播放音频后，点击开始", "Play audio, then select Start"))
@@ -34,8 +56,11 @@ internal static class LyricRenderer
         using var liveFont = FontAt(Math.Clamp(originalPixels * .48f, 13 * scale, 19 * scale), FontStyle.Regular);
         using var statusFont = FontAt(12 * scale, FontStyle.Regular);
         var gap = 6 * scale;
-        var textTop = 6 * scale;
-        var textBottom = Math.Max(textTop, pillY - 10 * scale);
+        // Always reserve the same toolbar budget, including when it is completely hidden.
+        // The final toolbar is placed directly above the words, not at the window's top.
+        var toolbarGap = 7 * scale;
+        var textTop = 6 * scale + toolbarHeight + toolbarGap;
+        var textBottom = Math.Max(textTop, size.Height - 9 * scale);
         var availableHeight = textBottom - textTop;
         var hasPrevious = !string.IsNullOrWhiteSpace(previous);
         var reserveTranslation = hasPrevious && !string.IsNullOrWhiteSpace(original) && string.IsNullOrWhiteSpace(status);
@@ -83,67 +108,102 @@ internal static class LyricRenderer
             rows.Add((preview, liveFont, previewHeight, Color.FromArgb(197, 207, 220), 1, true));
         if (statusHeight > 0) rows.Add((status, statusFont, statusHeight, Color.FromArgb(255, 209, 153), 1, true));
         var total = rows.Sum(row => row.Height) + Math.Max(0, rows.Count - 1) * gap;
-        var y = Math.Max(textTop, textBottom - total);
+        var firstRowY = Math.Max(textTop, textBottom - total);
+        var y = firstRowY;
         var textState = graphics.Save();
-        graphics.SetClip(new RectangleF(0, 0, size.Width, Math.Max(0, pillY - 8 * scale)));
+        graphics.SetClip(new RectangleF(0, Math.Max(0, textTop - 2 * scale), size.Width, Math.Max(0, size.Height - textTop + 2 * scale)));
         foreach (var row in rows)
         {
             DrawOutlinedText(graphics, row.Text, row.Font, new RectangleF(margin, y, contentWidth, row.Height), row.Color, scale, row.Lines, true, row.Soft);
             y += row.Height + gap;
         }
         graphics.Restore(textState);
-
-        using var chromeFont = FontAt(13 * scale, FontStyle.Regular);
-        var action = busy ? AppText.T("请稍候", "Please wait") : active ? AppText.T("停止", "Stop") : AppText.T("开始", "Start");
-        var labelWidth = graphics.MeasureString(action, chromeFont).Width;
-        var handleWidth = (int)Math.Ceiling(30 * scale);
-        var toggleWidth = (int)Math.Ceiling(labelWidth + 43 * scale);
-        var menuWidth = (int)Math.Ceiling(38 * scale);
-        var pillWidth = handleWidth + toggleWidth + menuWidth;
-        var pill = new Rectangle((size.Width - pillWidth) / 2, pillY, pillWidth, pillHeight);
-        var handle = new Rectangle(pill.X, pill.Y, handleWidth, pill.Height);
-        var toggle = new Rectangle(handle.Right, pill.Y, toggleWidth, pill.Height);
-        var menu = new Rectangle(toggle.Right, pill.Y, menuWidth, pill.Height);
-        using (var path = RoundRect(pill, 18 * scale))
+        var toolbar = new Rectangle((size.Width - toolbarWidth) / 2,
+            Math.Max(0, (int)Math.Floor(firstRowY - toolbarGap) - toolbarHeight), toolbarWidth, toolbarHeight);
+        var actions = new Rectangle[(int)LyricAction.Menu + 1];
+        for (var index = 0; index < 5; index++)
         {
-            using var fill = new SolidBrush(Color.FromArgb(220, 25, 30, 38));
-            using var border = new Pen(Color.FromArgb(100, 158, 174, 190), Math.Max(1, scale));
+            if (showToggleLabel)
+                actions[index + 1] = new Rectangle(index == 0 ? toolbar.Left : toolbar.Left + toggleWidth + (index - 1) * buttonSide,
+                    toolbar.Top, index == 0 ? toggleWidth : buttonSide, buttonSide);
+            else
+                actions[index + 1] = new Rectangle(toolbar.Left + index * cellWidth, toolbar.Top, cellWidth, buttonSide);
+        }
+        var textWidth = rows.Where(row => !string.IsNullOrWhiteSpace(row.Text))
+            .Select(row => MeasuredTextWidth(graphics, row.Text, row.Font, contentWidth))
+            .DefaultIfEmpty(0).Max();
+        var hoverWidth = Math.Min(size.Width, (int)Math.Ceiling(Math.Max(toolbar.Width, textWidth) + 24 * scale));
+        var hoverArea = Rectangle.Intersect(new Rectangle((size.Width - hoverWidth) / 2, Math.Max(0, toolbar.Top - (int)(4 * scale)),
+            hoverWidth, Math.Max(1, (int)Math.Ceiling(y + 5 * scale) - Math.Max(0, toolbar.Top - (int)(4 * scale)))), new Rectangle(Point.Empty, size));
+        if (toolbarVisible) DrawToolbar(graphics, toolbar, actions, chromeFont, toggleLabel, showToggleLabel, active, busy, hot, scale);
+        return new(bitmap, toolbar, hoverArea, actions, toolbarVisible);
+    }
+
+    private static float MeasuredTextWidth(Graphics graphics, string text, Font font, float width)
+    {
+        using var format = TextFormat();
+        return Math.Min(width, graphics.MeasureString(text, font, new SizeF(width, 10000), format).Width);
+    }
+
+    private static void DrawToolbar(Graphics graphics, Rectangle toolbar, Rectangle[] actions, Font font,
+        string toggleLabel, bool showToggleLabel, bool active, bool busy, LyricAction hot, float scale)
+    {
+        var iconScale = Math.Min(scale, actions[(int)LyricAction.Smaller].Width / 28f);
+        using var compactFont = FontAt(Math.Max(1, 13 * iconScale), FontStyle.Regular);
+        using (var path = RoundRect(toolbar, 14 * scale))
+        {
+            using var fill = new SolidBrush(Color.FromArgb(226, 25, 30, 38));
+            using var border = new Pen(Color.FromArgb(112, 158, 174, 190), Math.Max(1, scale));
             graphics.FillPath(fill, path); graphics.DrawPath(border, path);
         }
-        if (toggleHot && !busy)
+        if (hot != LyricAction.None && !(hot == LyricAction.Toggle && busy))
         {
-            using var hot = new SolidBrush(Color.FromArgb(34, 223, 238, 247));
-            graphics.FillRectangle(hot, Rectangle.Inflate(toggle, -1, -4));
+            var hover = actions[(int)hot];
+            hover.Inflate(-(int)Math.Ceiling(2 * scale), -(int)Math.Ceiling(3 * scale));
+            if (hover.Width > 0 && hover.Height > 0)
+            {
+                using var fill = new SolidBrush(Color.FromArgb(48, 223, 238, 247));
+                using var path = RoundRect(hover, 8 * scale);
+                graphics.FillPath(fill, path);
+            }
         }
-        if (menuHot)
-        {
-            using var hot = new SolidBrush(Color.FromArgb(34, 223, 238, 247));
-            using var path = RoundRect(Rectangle.Inflate(menu, -3, -4), 10 * scale);
-            graphics.FillPath(hot, path);
-        }
-        using (var separator = new Pen(Color.FromArgb(55, 175, 188, 204), Math.Max(1, scale)))
-            graphics.DrawLine(separator, menu.Left, pill.Top + 10 * scale, menu.Left, pill.Bottom - 10 * scale);
-        using (var dot = new SolidBrush(Color.FromArgb(150, 187, 199, 212)))
-            for (var column = 0; column < 2; column++)
-                for (var row = 0; row < 3; row++)
-                    graphics.FillEllipse(dot, handle.Left + (11 + 5 * column) * scale, handle.Top + (12 + 5 * row) * scale, 1.7f * scale, 1.7f * scale);
-        var centerY = toggle.Top + toggle.Height / 2f;
-        var iconX = toggle.Left + 14 * scale;
+        var toggle = actions[(int)LyricAction.Toggle];
+        var toggleY = toggle.Top + toggle.Height / 2f;
+        var iconX = showToggleLabel ? toggle.Left + 14 * scale : toggle.Left + toggle.Width / 2f;
         using (var icon = new SolidBrush(busy ? Color.FromArgb(165, 183, 198) : active ? Color.FromArgb(247, 180, 170) : Color.FromArgb(174, 239, 216)))
         {
             if (busy)
             {
                 using var pen = new Pen(Color.FromArgb(170, 209, 220, 230), 1.8f * scale);
-                graphics.DrawArc(pen, iconX - 4 * scale, centerY - 5 * scale, 10 * scale, 10 * scale, -70, 275);
+                graphics.DrawArc(pen, iconX - 5 * iconScale, toggleY - 5 * iconScale, 10 * iconScale, 10 * iconScale, -70, 275);
             }
-            else if (active) graphics.FillRectangle(icon, iconX - 3 * scale, centerY - 4 * scale, 8 * scale, 8 * scale);
-            else graphics.FillPolygon(icon, new PointF[] { new(iconX - 3 * scale, centerY - 5 * scale), new(iconX - 3 * scale, centerY + 5 * scale), new(iconX + 5 * scale, centerY) });
+            else if (active) graphics.FillRectangle(icon, iconX - 4 * iconScale, toggleY - 4 * iconScale, 8 * iconScale, 8 * iconScale);
+            else graphics.FillPolygon(icon, new PointF[] { new(iconX - 3 * iconScale, toggleY - 5 * iconScale), new(iconX - 3 * iconScale, toggleY + 5 * iconScale), new(iconX + 5 * iconScale, toggleY) });
         }
-        DrawOutlinedText(graphics, action, chromeFont, new RectangleF(toggle.Left + 28 * scale, toggle.Top + 1 * scale, toggle.Width - 34 * scale, toggle.Height - 2 * scale),
-            busy ? Color.FromArgb(182, 193, 207) : Color.FromArgb(241, 245, 250), scale, 1, false);
-        using (var dot = new SolidBrush(Color.FromArgb(235, 238, 244, 250)))
-            for (var i = -1; i <= 1; i++) graphics.FillEllipse(dot, menu.Left + menu.Width / 2f + i * 5 * scale - scale, centerY - scale, 2 * scale, 2 * scale);
-        return new(bitmap, toggle, menu, handle);
+        if (showToggleLabel)
+            DrawOutlinedText(graphics, toggleLabel, font, new RectangleF(toggle.Left + 26 * scale, toggle.Top, toggle.Width - 31 * scale, toggle.Height),
+                busy ? Color.FromArgb(182, 193, 207) : Color.FromArgb(241, 245, 250), scale, 1, false);
+        foreach (var action in new[] { LyricAction.Smaller, LyricAction.Larger })
+        {
+            var bounds = actions[(int)action];
+            DrawOutlinedText(graphics, action == LyricAction.Smaller ? "A−" : "A+", compactFont, bounds,
+                Color.FromArgb(235, 241, 247), iconScale, 1, false);
+        }
+        var locked = actions[(int)LyricAction.Lock];
+        var lockX = locked.Left + locked.Width / 2f;
+        var lockY = locked.Top + locked.Height / 2f;
+        using (var pen = new Pen(Color.FromArgb(235, 231, 239, 247), Math.Max(.5f, 1.4f * iconScale)))
+        {
+            graphics.DrawArc(pen, lockX - 4 * iconScale, lockY - 8 * iconScale, 8 * iconScale, 10 * iconScale, 180, 180);
+            using var body = RoundRect(new Rectangle((int)Math.Round(lockX - 6 * iconScale), (int)Math.Round(lockY - 2 * iconScale),
+                Math.Max(1, (int)Math.Round(12 * iconScale)), Math.Max(1, (int)Math.Round(10 * iconScale))), 2 * iconScale);
+            graphics.DrawPath(pen, body);
+            graphics.DrawLine(pen, lockX, lockY + 1 * iconScale, lockX, lockY + 4 * iconScale);
+        }
+        var menu = actions[(int)LyricAction.Menu];
+        using var dot = new SolidBrush(Color.FromArgb(235, 238, 244, 250));
+        for (var i = -1; i <= 1; i++)
+            graphics.FillEllipse(dot, menu.Left + menu.Width / 2f + i * 5 * iconScale - iconScale, menu.Top + menu.Height / 2f - iconScale, 2 * iconScale, 2 * iconScale);
     }
 
     private static Font FontAt(float pixels, FontStyle style) => new("Microsoft YaHei UI", pixels, style, GraphicsUnit.Pixel);
@@ -294,7 +354,7 @@ internal static class LyricRenderer
 
     private static GraphicsPath RoundRect(Rectangle bounds, float radius)
     {
-        var path = new GraphicsPath(); var diameter = radius * 2;
+        var path = new GraphicsPath(); var diameter = Math.Min(radius * 2, Math.Min(bounds.Width, bounds.Height));
         path.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
         path.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
         path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);

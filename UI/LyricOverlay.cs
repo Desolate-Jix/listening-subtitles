@@ -10,17 +10,21 @@ internal sealed class LyricOverlay : Form
 {
     private string _original = "", _translation = "", _live = "", _status = "", _previous = "";
     private string _language = "";
-    private bool _active, _busy, _ready, _dragging, _pressedToggle, _pressedMenu;
-    private bool _toggleHot, _menuHot, _refreshing;
+    private bool _active, _busy, _ready, _dragging, _lyricsLocked, _toolbarVisible, _refreshing;
+    private LyricAction _hotAction, _pressedAction;
+    private long _hoverLeaveAt;
     private int _fontSize = 20;
     private float _scale = 1;
     private Bitmap? _frame;
-    private Rectangle _toggleBounds, _menuBounds, _handleBounds;
+    private LyricRenderer.Frame? _layout;
     private Point _dragMouse, _dragLocation;
     private readonly ToolTip _toolTip = new() { InitialDelay = 650, ReshowDelay = 150, ShowAlways = true };
+    private readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 80 };
     private string _tip = "";
 
     internal event Action? ToggleRequested;
+    internal event Action<int>? FontSizeRequested;
+    internal event Action? LockRequested;
     internal event Action? MenuRequested;
     internal event Action? UserCloseRequested;
     internal event Action<Win32Exception>? DisplayFailed;
@@ -37,6 +41,7 @@ internal sealed class LyricOverlay : Form
         Text = AppText.T("听力字幕 · 桌面歌词", "Listening Subtitles · Desktop lyrics");
         KeyPreview = true;
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
+        _hoverTimer.Tick += (_, _) => PollHover();
         _ready = true;
         ApplySize(true);
         RefreshFrame();
@@ -46,7 +51,32 @@ internal sealed class LyricOverlay : Form
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams
     {
-        get { var parameters = base.CreateParams; parameters.ExStyle |= 0x00080000; return parameters; } // WS_EX_LAYERED
+        get
+        {
+            var parameters = base.CreateParams;
+            parameters.ExStyle |= WsExLayered;
+            if (_lyricsLocked) parameters.ExStyle |= WsExTransparent;
+            return parameters;
+        }
+    }
+
+    internal bool LyricsLocked
+    {
+        get => _lyricsLocked;
+        set
+        {
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
+            if (InvokeRequired) throw new InvalidOperationException("Update the lyric lock on the UI thread.");
+            if (_lyricsLocked == value) return;
+            // Change only the input bit. WinForms UpdateStyles or an opacity/color-key
+            // API can replace the layered-window state used by UpdateLayeredWindow.
+            if (IsHandleCreated) ApplyNativeLock(value);
+            _lyricsLocked = value;
+            ResetInteraction();
+            SetHoverState(false, LyricAction.None);
+            UpdateAccessibility();
+            UpdateHoverTimer();
+        }
     }
 
     internal void SetContent(string original, string translation, string live, string status, bool active, bool busy, int fontSize, string previous = "")
@@ -63,9 +93,10 @@ internal sealed class LyricOverlay : Form
         _active = active; _busy = busy; _fontSize = fontSize; _language = AppText.Language;
         Text = AppText.T("听力字幕 · 桌面歌词", "Listening Subtitles · Desktop lyrics");
         AccessibleName = Text;
-        AccessibleDescription = AppText.T("空格或回车开始、停止；Shift+F10 打开菜单。拖动文字或把手移动。", "Space or Enter starts and stops; Shift+F10 opens the menu. Drag the words or handle to move.");
-        if (resize) ApplySize(false);
+        UpdateAccessibility();
+        if (resize) { ResetInteraction(); ApplySize(false); }
         RefreshFrame();
+        UpdateToolTip();
         if (languageChanged) AccessibilityNotifyClients(AccessibleEvents.NameChange, -1);
     }
 
@@ -83,26 +114,51 @@ internal sealed class LyricOverlay : Form
         _scale = DeviceDpi / 96f;
         ApplySize(true);
         RefreshFrame();
+        UpdateHoverTimer();
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        _hoverTimer.Stop();
+        ResetInteraction();
+        _toolbarVisible = false; _hotAction = LyricAction.None;
+        base.OnHandleDestroyed(e);
     }
 
     protected override void OnDpiChanged(DpiChangedEventArgs e)
     {
         base.OnDpiChanged(e);
+        ResetInteraction();
         _scale = e.DeviceDpiNew / 96f;
         ApplySize(false);
         RefreshInteractionFrame();
+        UpdateHoverTimer();
     }
 
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_ready && !_refreshing && ClientSize.Width > 0 && ClientSize.Height > 0 && WindowState != FormWindowState.Minimized) RefreshInteractionFrame();
+        if (!_ready || _refreshing) return;
+        ResetInteraction();
+        UpdateHoverTimer();
+        if (ClientSize.Width > 0 && ClientSize.Height > 0 && WindowState != FormWindowState.Minimized) RefreshInteractionFrame();
     }
 
     protected override void OnShown(EventArgs e)
     {
         RefreshFrame();
         base.OnShown(e);
+        UpdateHoverTimer();
+    }
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (!_ready) return;
+        UpdateHoverTimer();
+        // OnShown fires only once. Re-present the hidden-state frame on later shows
+        // so Windows cannot restore a stale surface with its toolbar still visible.
+        if (Visible && WindowState != FormWindowState.Minimized) RefreshInteractionFrame();
     }
 
     protected override void OnPaintBackground(PaintEventArgs e) { }
@@ -135,12 +191,12 @@ internal sealed class LyricOverlay : Form
         _refreshing = true;
         try
         {
-            var rendered = LyricRenderer.Render(ClientSize, _scale, _original, _translation, _live, _status, _active, _busy, _fontSize, _toggleHot, _menuHot, _previous);
+            var rendered = LyricRenderer.Render(ClientSize, _scale, _original, _translation, _live, _status, _active, _busy, _fontSize,
+                _previous, _toolbarVisible && !_lyricsLocked, _hotAction);
             var old = _frame;
-            _frame = rendered.Image;
-            _toggleBounds = rendered.Toggle; _menuBounds = rendered.Menu; _handleBounds = rendered.Handle;
+            _layout = rendered; _frame = rendered.Image;
             old?.Dispose();
-            if (IsHandleCreated && WindowState != FormWindowState.Minimized) PresentFrame();
+            if (IsHandleCreated && Visible && WindowState != FormWindowState.Minimized) PresentFrame();
         }
         finally { _refreshing = false; }
     }
@@ -205,11 +261,122 @@ internal sealed class LyricOverlay : Form
 
     private static Win32Exception DisplayError() => new(Marshal.GetLastWin32Error(), AppText.T("无法显示透明字幕层，请使用完整控制窗口。", "The transparent lyric layer could not be displayed. Use the full control window."));
 
+    private bool CanInteract => _ready && !IsDisposed && !Disposing && IsHandleCreated && Visible &&
+        WindowState != FormWindowState.Minimized && !_lyricsLocked;
+
+    private void UpdateHoverTimer()
+    {
+        if (CanInteract)
+        {
+            _hoverTimer.Start();
+            PollHover();
+        }
+        else
+        {
+            _hoverTimer.Stop();
+            ResetInteraction();
+            SetHoverState(false, LyricAction.None);
+        }
+    }
+
+    private void PollHover()
+    {
+        if (CanInteract) UpdateHover(PointToClient(Cursor.Position));
+    }
+
+    // Polling also sees fully transparent spaces, where the layered HWND receives
+    // no mouse messages. HoverArea joins the lyric rows, toolbar and intervening gap.
+    private void UpdateHover(Point point)
+    {
+        if (!CanInteract || _layout is null) return;
+        var inside = _layout.HoverArea.Contains(point);
+        var visible = inside || _dragging || _pressedAction != LyricAction.None;
+        if (visible) _hoverLeaveAt = 0;
+        else if (_toolbarVisible)
+        {
+            if (_hoverLeaveAt == 0) _hoverLeaveAt = Environment.TickCount64;
+            visible = Environment.TickCount64 - _hoverLeaveAt < 240;
+        }
+        var hot = LyricAction.None;
+        if (visible && inside)
+        {
+            // Bounds remain stable while hidden, so the first hovered button can be
+            // highlighted in the same render that reveals the toolbar.
+            for (var action = LyricAction.Toggle; action <= LyricAction.Menu; action++)
+                if (_layout.BoundsFor(action).Contains(point)) { hot = action; break; }
+        }
+        SetHoverState(visible, hot);
+        Cursor = hot != LyricAction.None ? Cursors.Hand : inside || _dragging ? Cursors.SizeAll : Cursors.Default;
+    }
+
+    private void SetHoverState(bool visible, LyricAction hot)
+    {
+        if (!visible) hot = LyricAction.None;
+        if (_toolbarVisible != visible || _hotAction != hot)
+        {
+            _toolbarVisible = visible; _hotAction = hot;
+            RefreshInteractionFrame();
+        }
+        if (!IsDisposed) UpdateToolTip();
+    }
+
+    private void UpdateToolTip()
+    {
+        var tip = !_toolbarVisible || _lyricsLocked ? "" : _hotAction switch
+        {
+            LyricAction.Toggle => _busy ? AppText.T("正在处理，请稍候", "Working, please wait")
+                : _active ? AppText.T("停止转写（空格）", "Stop transcription (Space)") : AppText.T("开始转写（空格）", "Start transcription (Space)"),
+            LyricAction.Smaller => AppText.T("减小字号", "Decrease font size"),
+            LyricAction.Larger => AppText.T("增大字号", "Increase font size"),
+            LyricAction.Lock => AppText.T("锁定字幕并穿透鼠标；从托盘菜单解锁", "Lock lyrics and pass mouse input through; unlock from the tray menu"),
+            LyricAction.Menu => AppText.T("设置、历史与显示选项（Shift+F10）", "Settings, history and display options (Shift+F10)"),
+            _ => AppText.T("拖动文字移动字幕", "Drag the words to move the lyrics")
+        };
+        if (_tip == tip) return;
+        _tip = tip;
+        _toolTip.SetToolTip(this, tip);
+    }
+
+    private void UpdateAccessibility() => AccessibleDescription = _lyricsLocked
+        ? AppText.T("字幕已锁定，鼠标完全穿透；从托盘菜单解锁。", "Lyrics are locked and mouse input passes through. Unlock from the tray menu.")
+        : AppText.T("悬停显示控制条。空格或回车开始、停止；Shift+F10 打开菜单。拖动文字移动。", "Hover to show controls. Space or Enter starts and stops; Shift+F10 opens the menu. Drag the words to move.");
+
+    private void ResetInteraction()
+    {
+        _dragging = false; _pressedAction = LyricAction.None; _hoverLeaveAt = 0;
+        if (IsHandleCreated && Capture) Capture = false;
+        Cursor = Cursors.Default;
+    }
+
+    private void ApplyNativeLock(bool locked)
+    {
+        Marshal.SetLastPInvokeError(0);
+        var style = IntPtr.Size == 8 ? GetWindowLongPtr(Handle, GwlExStyle).ToInt64() : GetWindowLong(Handle, GwlExStyle);
+        var error = Marshal.GetLastPInvokeError();
+        if (style == 0 && error != 0) throw LockError(error);
+        var updated = locked ? style | WsExTransparent : style & ~WsExTransparent;
+        if (updated == style) return;
+        Marshal.SetLastPInvokeError(0);
+        var previous = IntPtr.Size == 8 ? SetWindowLongPtr(Handle, GwlExStyle, new IntPtr(updated)).ToInt64()
+            : SetWindowLong(Handle, GwlExStyle, unchecked((int)updated));
+        error = Marshal.GetLastPInvokeError();
+        if (previous == 0 && error != 0) throw LockError(error);
+    }
+
+    private static Win32Exception LockError(int error) => new(error, AppText.T("无法更改字幕锁定状态，请从托盘打开完整控制窗口。", "The lyric lock could not be changed. Open the full control window from the tray."));
+
     protected override void WndProc(ref Message message)
     {
-        const int hitTest = 0x0084, contextMenu = 0x007B;
+        const int hitTest = 0x0084, contextMenu = 0x007B, close = 0x0010;
+        if (message.Msg == close && !Disposing && UserCloseRequested is { } requestClose)
+        {
+            requestClose();
+            message.Result = IntPtr.Zero;
+            return;
+        }
         if (message.Msg == hitTest && _frame is not null)
         {
+            if (_lyricsLocked) { message.Result = new IntPtr(-1); return; }
             var position = unchecked((long)message.LParam);
             var point = PointToClient(new Point(unchecked((short)position), unchecked((short)(position >> 16))));
             // Zero-alpha pixels pass through Windows' layered-window hit testing. Explicitly
@@ -220,7 +387,8 @@ internal sealed class LyricOverlay : Form
         }
         if (message.Msg == contextMenu)
         {
-            MenuRequested?.Invoke();
+            if (CanInteract) MenuRequested?.Invoke();
+            message.Result = IntPtr.Zero;
             return;
         }
         base.WndProc(ref message);
@@ -229,21 +397,22 @@ internal sealed class LyricOverlay : Form
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Button != MouseButtons.Left) return;
+        if (e.Button != MouseButtons.Left || !CanInteract || _layout is null || !_layout.HoverArea.Contains(e.Location)) return;
         Activate();
-        _pressedToggle = _toggleBounds.Contains(e.Location);
-        _pressedMenu = _menuBounds.Contains(e.Location);
-        if (!_pressedToggle && !_pressedMenu)
+        _pressedAction = _toolbarVisible ? _layout.HitTest(e.Location) : LyricAction.None;
+        if (_pressedAction == LyricAction.None)
         {
             _dragging = true; _dragMouse = Cursor.Position; _dragLocation = Location;
             Cursor = Cursors.SizeAll;
         }
         Capture = true;
+        UpdateHover(e.Location);
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+        if (!CanInteract) return;
         if (_dragging)
         {
             var cursor = Cursor.Position;
@@ -251,57 +420,52 @@ internal sealed class LyricOverlay : Form
             Location = BoundLocation(new Point(_dragLocation.X + cursor.X - _dragMouse.X, _dragLocation.Y + cursor.Y - _dragMouse.Y), area);
             return;
         }
-        var toggleHot = _toggleBounds.Contains(e.Location); var menuHot = _menuBounds.Contains(e.Location);
-        Cursor = toggleHot || menuHot ? Cursors.Hand : Cursors.SizeAll;
-        if (_toggleHot != toggleHot || _menuHot != menuHot)
-        {
-            _toggleHot = toggleHot; _menuHot = menuHot; RefreshInteractionFrame();
-            if (IsDisposed) return;
-        }
-        var tip = toggleHot ? (_busy ? AppText.T("正在处理，请稍候", "Working, please wait") : _active ? AppText.T("停止转写（空格）", "Stop transcription (Space)") : AppText.T("开始转写（空格）", "Start transcription (Space)"))
-            : menuHot ? AppText.T("设置、历史与显示选项（Shift+F10）", "Settings, history and display options (Shift+F10)")
-            : AppText.T("拖动文字或把手移动字幕", "Drag the words or handle to move the lyrics");
-        if (_tip != tip) { _tip = tip; _toolTip.SetToolTip(this, tip); }
+        UpdateHover(e.Location);
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
         if (e.Button != MouseButtons.Left) return;
-        var toggle = _pressedToggle && _toggleBounds.Contains(e.Location) && !_busy;
-        var menu = _pressedMenu && _menuBounds.Contains(e.Location);
-        _dragging = _pressedToggle = _pressedMenu = false;
+        var action = CanInteract && _toolbarVisible && _layout?.HitTest(e.Location) == _pressedAction ? _pressedAction : LyricAction.None;
+        _dragging = false; _pressedAction = LyricAction.None;
         Capture = false;
-        if (toggle) ToggleRequested?.Invoke();
-        else if (menu) MenuRequested?.Invoke();
+        switch (action)
+        {
+            case LyricAction.Toggle: if (!_busy) ToggleRequested?.Invoke(); break;
+            case LyricAction.Smaller: FontSizeRequested?.Invoke(-2); break;
+            case LyricAction.Larger: FontSizeRequested?.Invoke(2); break;
+            case LyricAction.Lock: LockRequested?.Invoke(); break;
+            case LyricAction.Menu: MenuRequested?.Invoke(); break;
+        }
     }
 
     protected override void OnMouseCaptureChanged(EventArgs e)
     {
         base.OnMouseCaptureChanged(e);
-        if (!Capture) _dragging = _pressedToggle = _pressedMenu = false;
+        if (!Capture) { _dragging = false; _pressedAction = LyricAction.None; }
     }
 
     protected override void OnMouseLeave(EventArgs e)
     {
         base.OnMouseLeave(e);
-        if (!_dragging && (_toggleHot || _menuHot)) { _toggleHot = _menuHot = false; RefreshInteractionFrame(); }
+        PollHover();
     }
 
     protected override bool ProcessCmdKey(ref Message message, Keys keyData)
     {
         if (keyData is Keys.Space or Keys.Enter)
         {
-            if (!_busy) ToggleRequested?.Invoke();
+            if (CanInteract && !_busy) ToggleRequested?.Invoke();
             return true;
         }
-        if (keyData == Keys.Apps || keyData == (Keys.Shift | Keys.F10)) { MenuRequested?.Invoke(); return true; }
+        if (keyData == Keys.Apps || keyData == (Keys.Shift | Keys.F10)) { if (CanInteract) MenuRequested?.Invoke(); return true; }
         return base.ProcessCmdKey(ref message, keyData);
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        if (e.CloseReason == CloseReason.UserClosing && !Disposing)
+        if (e.CloseReason is CloseReason.UserClosing or CloseReason.TaskManagerClosing && !Disposing)
         {
             e.Cancel = true;
             UserCloseRequested?.Invoke();
@@ -315,10 +479,19 @@ internal sealed class LyricOverlay : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _ready = false; _toolTip.Dispose(); _frame?.Dispose(); _frame = null; }
+        if (disposing)
+        {
+            _ready = false; _hoverTimer.Stop(); _hoverTimer.Dispose();
+            ResetInteraction(); _toolTip.Dispose(); _frame?.Dispose(); _frame = null; _layout = null;
+        }
         base.Dispose(disposing);
     }
 
+    private const int GwlExStyle = -20, WsExLayered = 0x00080000, WsExTransparent = 0x00000020;
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)] private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)] private static extern int GetWindowLong(IntPtr hwnd, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)] private static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)] private static extern int SetWindowLong(IntPtr hwnd, int index, int value);
     [StructLayout(LayoutKind.Sequential)] private struct NativePoint(int x, int y) { internal int X = x, Y = y; }
     [StructLayout(LayoutKind.Sequential)] private struct NativeSize(int width, int height) { internal int Width = width, Height = height; }
     [StructLayout(LayoutKind.Sequential, Pack = 1)] private struct BlendFunction { internal byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }

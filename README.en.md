@@ -9,7 +9,7 @@ A Windows desktop app dedicated to **speech recognition, live subtitle transcrip
 ## Start
 
 1. Download and fully extract the Windows x64 ZIP. Run `ListeningSubtitles.exe`.
-2. The app opens in the transparent desktop-lyrics view. Open Settings from the “…” menu and enter your own OpenAI API key. Credentials are encrypted locally with Windows DPAPI. No other app or ChatGPT browser session is required.
+2. The app opens in the transparent desktop-lyrics view. Hover over the lyrics, open Settings from the toolbar’s “…” menu and enter your own OpenAI API key. Credentials are encrypted locally with Windows DPAPI. No other app or ChatGPT browser session is required.
 3. Choose Simplified Chinese or English for the interface; Simplified Chinese is the default. This does not change the spoken source language or translation target.
 4. Configure the source language and translation target. The default is English (`en`) → Simplified Chinese (`zh-Hans`).
 5. Play your video/audio, then press Start. Stop ends capture and pending network work. Opening the app alone never starts capture or contacts the API.
@@ -17,7 +17,9 @@ A Windows desktop app dedicated to **speech recognition, live subtitle transcrip
 
 A line above the current subtitle shows the previous sentence’s translation when it is ready. If translation falls several sentences behind, the most recent earlier sentence with a translation stays in view. When translations are hidden or none are available yet, the line shows the previous original.
 
-The desktop-lyrics view keeps small Start/Stop controls and a “…” menu. Drag the text or handle to move it. The menu and tray provide settings, history, font size, translation visibility and always-on-top options. Select “Full control window”, then use its “Desktop lyrics” button to return. Long text is shortened in the overlay; view it in full in History. Text is displayed by segment, without word-by-word timing or karaoke highlighting. Opening or switching views never starts capture automatically.
+Hover near the words to reveal the toolbar just above them. Move away to hide it. Use **A− / A+** to resize the subtitles and drag the words to reposition them. Select the **padlock** to fix their position and let clicks pass through to the video player. To move the lyrics or use their toolbar again, right-click the app’s Windows tray icon and select **Unlock lyrics**. The app remembers the locked position after a restart.
+
+You can start and stop transcription from the toolbar or the tray menu. The “…” and tray menus both open Settings, History and the full control window. History shows the full text of long segments. Each caption is timed as a segment.
 
 The app captures **system output audio only**, not the microphone. Other apps playing through the selected output device are included. It follows the Windows default headphones/speakers unless you select a fixed playback device. Play existing audio/video files in a media player to transcribe them; there is no batch file-import interface. Windows 10/11 x64 is required.
 

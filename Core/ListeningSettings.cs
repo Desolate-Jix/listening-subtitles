@@ -16,6 +16,8 @@ public sealed record ListeningSettings
     [JsonPropertyName("ShowChinese")]
     public bool ShowTranslation { get; init; } = true;
     public bool AlwaysOnTop { get; init; } = true;
+    public bool LyricsLocked { get; init; }
+    public Point? LockedLyricCenter { get; init; }
     public int FontSize { get; init; } = 20;
 
     public void Validate()

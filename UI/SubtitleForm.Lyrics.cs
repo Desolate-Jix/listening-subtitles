@@ -32,6 +32,7 @@ public sealed partial class SubtitleForm
         Add("smaller", (_, _) => ChangeFont(-2));
         Add("translation", (_, _) => _show.Checked = !_show.Checked);
         Add("topmost", (_, _) => _pin.Checked = !_pin.Checked);
+        Add("lockLyrics", (_, _) => ToggleLyricsLock());
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Opening += (_, e) =>
         {
@@ -42,6 +43,8 @@ public sealed partial class SubtitleForm
             ((ToolStripMenuItem)_menu.Items["translation"]!).Checked = _show.Checked;
             ((ToolStripMenuItem)_menu.Items["topmost"]!).Checked = _pin.Checked;
         };
+        _overlay.FontSizeRequested += delta => { if (CanUseMenu()) ChangeFont(delta); };
+        _overlay.LockRequested += () => { if (CanUseMenu()) ToggleLyricsLock(); };
         _overlay.ToggleRequested += async () =>
         {
             if (_busy || !CanUseMenu()) return;
@@ -69,6 +72,39 @@ public sealed partial class SubtitleForm
         _menu.Items["smaller"]!.Text = AppText.T("缩小字幕", "Smaller subtitles");
         _menu.Items["translation"]!.Text = _show.Text;
         _menu.Items["topmost"]!.Text = _pin.Text;
+        UpdateLyricsLockLabel();
+    }
+
+    private void UpdateLyricsLockLabel() => _menu.Items["lockLyrics"]!.Text = _settings.LyricsLocked
+        ? AppText.T("解锁歌词", "Unlock lyrics") : AppText.T("锁定歌词（鼠标穿透）", "Lock lyrics (click-through)");
+
+    private void ToggleLyricsLock()
+    {
+        var locked = !_overlay.LyricsLocked;
+        try { _overlay.LyricsLocked = locked; }
+        catch (Win32Exception)
+        {
+            ShowControlPanel();
+            SetState("歌词锁定状态更改失败，可从托盘重试。", "The lyric lock could not be changed. Try again from the tray.");
+            return;
+        }
+        _settings = _settings with
+        {
+            LyricsLocked = locked,
+            LockedLyricCenter = locked ? new Point(_overlay.Left + _overlay.Width / 2, _overlay.Top + _overlay.Height / 2) : null
+        };
+        UpdateLyricsLockLabel();
+        RefreshLyrics();
+        SavePreferences();
+    }
+
+    private void RestoreLockedPosition(Point center)
+    {
+        var area = Screen.FromPoint(center).WorkingArea;
+        var x = Math.Clamp(center.X, area.Left, area.Right) - _overlay.Width / 2;
+        var y = Math.Clamp(center.Y, area.Top, area.Bottom) - _overlay.Height / 2;
+        _overlay.Location = new(Math.Clamp(x, area.Left, Math.Max(area.Left, area.Right - _overlay.Width)),
+            Math.Clamp(y, area.Top, Math.Max(area.Top, area.Bottom - _overlay.Height)));
     }
 
     private void ShowLyrics()
@@ -76,9 +112,11 @@ public sealed partial class SubtitleForm
         _overlay.TopMost = _settings.AlwaysOnTop;
         try
         {
+            _overlay.LyricsLocked = _settings.LyricsLocked;
             _overlay.WindowState = FormWindowState.Normal;
             _overlay.Show();
             if (!RefreshLyrics()) return;
+            if (_settings.LyricsLocked && _settings.LockedLyricCenter is { } center) RestoreLockedPosition(center);
             Hide();
         }
         catch (Win32Exception) { HandleOverlayFailure(); }
@@ -142,6 +180,10 @@ public sealed partial class SubtitleForm
         }
         var live = latest is { Final: false } && latest != caption ? latest.Original : "";
         var status = _overlayStatus;
+        if (status.Length == 0 && caption is null && !_session.Active && !_busy)
+            status = _settings.LyricsLocked
+                ? AppText.T("歌词已锁定 · 右键托盘图标可解锁", "Lyrics locked · Right-click the tray icon to unlock")
+                : AppText.T("移到字幕上，点击开始", "Hover over the lyrics and select Start");
         if (status.Length == 0 && _show.Checked && caption?.TranslationStatus is "busy" or "error")
             status = _translated.Text;
         try

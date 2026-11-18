@@ -63,7 +63,7 @@ internal static class LyricOverlayTests
             Application.DoEvents();
             using var frame = overlay.CaptureFrame();
             AssertAlpha(frame, "bilingual live lyrics");
-            AssertReservedControls(frame, Field<Rectangle>(overlay, "_handleBounds"), Field<Rectangle>(overlay, "_menuBounds"));
+            AssertToolbarArea(frame, Field<LyricRenderer.Frame>(overlay, "_layout").Toolbar, Field<bool>(overlay, "_toolbarVisible"));
             Check(frame.Size == overlay.ClientSize, "preview bitmap does not match the presented layered surface");
             AssertCompositing(frame, destination);
             // Keep the constrained-height regression independent of the test monitor.
@@ -73,7 +73,7 @@ internal static class LyricOverlayTests
             using (compact.Image)
             {
                 AssertAlpha(compact.Image, "compact lyrics");
-                AssertReservedControls(compact.Image, compact.Handle, compact.Menu);
+                AssertToolbarArea(compact.Image, compact.Toolbar, false);
             }
             overlay.SetContent("Listen for the rhythm.", "听听这段旋律。", "", "", true, false, 20);
             Application.DoEvents();
@@ -99,13 +99,13 @@ internal static class LyricOverlayTests
             "startup, preview or view switching attempted an audio/API session");
     }
 
-    internal static void AssertReservedControls(Bitmap frame, Rectangle handle, Rectangle menu)
+    internal static void AssertToolbarArea(Bitmap frame, Rectangle toolbar, bool visible)
     {
-        var controls = Rectangle.Inflate(Rectangle.Union(handle, menu), 3, 3);
-        for (int y = Math.Max(0, controls.Top); y < frame.Height; y++)
+        var controls = Rectangle.Inflate(toolbar, 3, 3);
+        for (int y = Math.Max(0, toolbar.Top); y < Math.Min(frame.Height, toolbar.Bottom); y++)
             for (int x = 0; x < frame.Width; x++)
-                if (x < controls.Left || x >= controls.Right)
-                    Check(frame.GetPixel(x, y).A <= 8, "subtitle/live/status text overlaps the bottom control row");
+                if (!visible || x < controls.Left || x >= controls.Right)
+                    Check(frame.GetPixel(x, y).A <= 8, "hidden top toolbar painted pixels, or subtitles overlap its reserved row");
     }
 
     internal static void AssertAlpha(Bitmap frame, string scenario)

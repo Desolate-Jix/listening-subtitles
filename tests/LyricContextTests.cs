@@ -110,8 +110,8 @@ internal static class LyricContextTests
             using (second.Image)
             {
                 LyricOverlayTests.AssertAlpha(first.Image, "compact context font " + font);
-                LyricOverlayTests.AssertReservedControls(first.Image, first.Handle, first.Menu);
-                var bands = TextBands(first.Image, first.Handle.Top - 3);
+                LyricOverlayTests.AssertToolbarArea(first.Image, first.Toolbar, false);
+                var bands = TextBands(first.Image, first.Toolbar.Bottom + 3, first.Image.Height);
                 Check(bands.Count >= 4, "previous, current, translation and error status are not four separate compact text rows");
                 int changed = 0, lastChangedRow = -1;
                 for (int y = 0; y < first.Image.Height; y++)
@@ -140,10 +140,10 @@ internal static class LyricContextTests
         return true;
     }
 
-    private static List<(int Top, int Bottom)> TextBands(Bitmap image, int bottom)
+    private static List<(int Top, int Bottom)> TextBands(Bitmap image, int top, int bottom)
     {
         var rows = new List<int>();
-        for (int y = 0; y < bottom; y++)
+        for (int y = top; y < bottom; y++)
         {
             var bright = 0;
             for (int x = 0; x < image.Width; x++)
